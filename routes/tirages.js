@@ -46,4 +46,19 @@ router.post("/run/:tontineId", async (req, res) => {
   res.status(201).json(r.rows[0]);
 });
 
+// Supprimer un tirage
+router.delete("/:id", async (req, res) => {
+  const r = await query(
+    `delete from tirages ti
+     using tontines t
+     where ti.id = $1
+       and t.id = ti.tontine_id
+       and t.user_id = $2`,
+    [req.params.id, req.user.id]
+  );
+  if (r.rowCount === 0) return res.status(404).json({ error: "Tirage non trouvé" });
+  res.status(204).end();
+});
+
+
 export default router;
