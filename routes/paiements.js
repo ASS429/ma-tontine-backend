@@ -41,4 +41,19 @@ router.post("/", async (req, res) => {
   }
 });
 
+// Supprimer un paiement
+router.delete("/:id", async (req, res) => {
+  const r = await query(
+    `delete from paiements p
+     using tontines t
+     where p.id = $1
+       and t.id = p.tontine_id
+       and t.user_id = $2`,
+    [req.params.id, req.user.id]
+  );
+  if (r.rowCount === 0) return res.status(404).json({ error: "Paiement non trouvé" });
+  res.status(204).end();
+});
+
+
 export default router;
