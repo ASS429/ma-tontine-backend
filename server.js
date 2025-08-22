@@ -10,6 +10,8 @@ import membresRoutes from "./routes/membres.js";
 import paiementsRoutes from "./routes/paiements.js";
 import tiragesRoutes from "./routes/tirages.js";
 import statsRoutes from "./routes/stats.js";
+import alertesRoutes from "./routes/alertes.js";
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +32,8 @@ app.use("/membres", membresRoutes);
 app.use("/paiements", paiementsRoutes);
 app.use("/tirages", tiragesRoutes);
 app.use("/stats", statsRoutes);
+app.use("/alertes", alertesRoutes);
+
 
 // 404
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
