@@ -17,17 +17,28 @@ router.get("/:tontineId", async (req, res) => {
 
 // Add member to a tontine
 router.post("/:tontineId", async (req, res) => {
-  const { nom, prenom, identifiant } = req.body;
+  const { nom, prenom = null, identifiant = null } = req.body;
+
+  if (!nom || nom.trim() === "") {
+    return res.status(400).json({ error: "Nom requis" });
+  }
+
   // Ensure tontine belongs to user
-  const t = await query(`select id from tontines where id = $1 and user_id = $2`, [req.params.tontineId, req.user.id]);
+  const t = await query(
+    `select id from tontines where id = $1 and user_id = $2`,
+    [req.params.tontineId, req.user.id]
+  );
   if (t.rowCount === 0) return res.status(404).json({ error: "Tontine not found" });
 
   const r = await query(
-    `insert into membres (tontine_id, nom, prenom, identifiant) values ($1, $2, $3, $4) returning *`,
-    [req.params.tontineId, nom, prenom, identifiant]
+    `insert into membres (tontine_id, nom, prenom, identifiant) 
+     values ($1, $2, $3, $4) returning *`,
+    [req.params.tontineId, nom.trim(), prenom, identifiant]
   );
+
   res.status(201).json(r.rows[0]);
 });
+
 
 // Update member
 router.put("/edit/:id", async (req, res) => {
