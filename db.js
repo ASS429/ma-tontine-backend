@@ -1,23 +1,16 @@
-import pkg from "pg";
+import pkg from 'pg';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
 const { Pool } = pkg;
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  console.error("Missing DATABASE_URL in environment.");
-  process.exit(1);
-}
+// ⚠️ Mets ceci dans ton fichier .env (Render > Environment Variables) :
+// SUPABASE_DB_URL=postgresql://postgres:password@host:5432/postgres
 
-export const pool = new Pool({
-  connectionString,
-  ssl: { rejectUnauthorized: false }
+const pool = new Pool({
+  connectionString: process.env.SUPABASE_DB_URL,
+  ssl: { rejectUnauthorized: false } // obligatoire sur Render/Supabase
 });
 
-export async function query(text, params) {
-  const start = Date.now();
-  const res = await pool.query(text, params);
-  const duration = Date.now() - start;
-  if (process.env.NODE_ENV !== "production") {
-    console.log("executed query", { text, duration, rows: res.rowCount });
-  }
-  return res;
-}
+export default pool;
