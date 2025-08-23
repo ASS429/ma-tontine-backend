@@ -1,4 +1,3 @@
-// ma-tontine-backend/middleware/auth.js
 import jwt from "jsonwebtoken";
 
 export function requireAuth(req, res, next) {
