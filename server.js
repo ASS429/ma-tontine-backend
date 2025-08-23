@@ -6,6 +6,8 @@ import tontinesRoutes from "./routes/tontines.js";
 import membresRoutes from "./routes/membres.js";
 import cotisationsRoutes from "./routes/cotisations.js";
 import utilisateursRoutes from "./routes/utilisateurs.js";
+import authRoutes from "./routes/auth.js";
+
 
 dotenv.config();
 const app = express();
@@ -21,6 +23,8 @@ app.use("/api/tontines", tontinesRoutes);
 app.use("/api/membres", membresRoutes);
 app.use("/api/cotisations", cotisationsRoutes);
 app.use("/api/utilisateurs", utilisateursRoutes);
+app.use("/api/auth", authRoutes);
+
 
 
 const PORT = process.env.PORT || 3000;
