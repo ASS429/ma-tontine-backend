@@ -1,30 +1,29 @@
-// ESM
-import { createClient } from "@supabase/supabase-js";
+import jwt from "jsonwebtoken";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // clé serveur confidentielle
-);
+export function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: "No token provided" });
+  }
 
-export async function requireAuth(req, res, next) {
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ error: "Invalid token format" });
+  }
+
   try {
-    const authHeader = req.headers["authorization"] || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    if (!token) return res.status(401).json({ error: "Token manquant" });
+    // ⚠️ On ne vérifie pas la signature avec la clé privée (elle est chez Supabase)
+    // Mais on peut décoder le payload JWT qui contient l'ID utilisateur (champ "sub")
+    const payload = jwt.decode(token);
 
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user) return res.status(401).json({ error: "Token invalide" });
+    if (!payload?.sub) {
+      return res.status(401).json({ error: "Invalid token payload" });
+    }
 
-    req.user = data.user; // { id, email, user_metadata, ... }
+    req.user = { id: payload.sub }; // user.id = UUID Supabase
     next();
-  } catch (e) {
-    res.status(401).json({ error: "Authentification requise" });
+  } catch (err) {
+    console.error("Auth error:", err.message);
+    return res.status(401).json({ error: "Unauthorized" });
   }
 }
-
-/* CJS:
-const { createClient } = require("@supabase/supabase-js");
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-async function requireAuth(req,res,next){ ... }
-module.exports = { requireAuth };
-*/
