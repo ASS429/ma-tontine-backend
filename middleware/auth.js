@@ -1,14 +1,30 @@
-import jwt from "jsonwebtoken";
+// ESM
+import { createClient } from "@supabase/supabase-js";
 
-export function authenticate(req, res, next) {
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!token) return res.status(401).json({ error: "Missing token" });
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // clé serveur confidentielle
+);
+
+export async function requireAuth(req, res, next) {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "devsecret");
-    req.user = { id: decoded.sub };
+    const authHeader = req.headers["authorization"] || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!token) return res.status(401).json({ error: "Token manquant" });
+
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) return res.status(401).json({ error: "Token invalide" });
+
+    req.user = data.user; // { id, email, user_metadata, ... }
     next();
   } catch (e) {
-    return res.status(401).json({ error: "Invalid token" });
+    res.status(401).json({ error: "Authentification requise" });
   }
 }
+
+/* CJS:
+const { createClient } = require("@supabase/supabase-js");
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+async function requireAuth(req,res,next){ ... }
+module.exports = { requireAuth };
+*/
