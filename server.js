@@ -12,13 +12,22 @@ import tiragesRoutes from "./routes/tirages.js";
 import statsRoutes from "./routes/stats.js";
 import alertesRoutes from "./routes/alertes.js";
 
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// CORS: allow your frontend origin from env (fallback * for local dev)
-const allowedOrigin = process.env.ALLOWED_ORIGIN || "*";
-app.use(cors({ origin: allowedOrigin, credentials: true }));
+// === CORS CONFIG ===
+const allowedOrigin = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
+
+const corsOptions = {
+  origin: allowedOrigin,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+// important pour répondre correctement aux préflights
+app.options("*", cors(corsOptions));
 
 app.use(helmet());
 app.use(express.json());
@@ -33,7 +42,6 @@ app.use("/paiements", paiementsRoutes);
 app.use("/tirages", tiragesRoutes);
 app.use("/stats", statsRoutes);
 app.use("/alertes", alertesRoutes);
-
 
 // 404
 app.use((req, res) => res.status(404).json({ error: "Not Found" }));
