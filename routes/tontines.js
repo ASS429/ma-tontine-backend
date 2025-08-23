@@ -1,98 +1,36 @@
-import express from "express";
-import { authenticate } from "../middleware/auth.js";
-import { query } from "../db.js";
+import express from 'express';
+import pool from '../db.js';
 
 const router = express.Router();
-router.use(authenticate);
 
-// 📌 Liste des tontines de l’utilisateur
-router.get("/", async (req, res) => {
+// 🔹 Récupérer toutes les tontines de l’utilisateur connecté
+router.get('/', async (req, res) => {
   try {
-    const r = await query(
-      `SELECT * FROM tontines 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC`,
-      [req.user.id]
+    const userId = req.query.userId; // récupéré depuis le frontend ou middleware auth
+    const { rows } = await pool.query(
+      'SELECT * FROM tontines WHERE createur = $1 ORDER BY cree_le DESC',
+      [userId]
     );
-    res.json(r.rows);
+    res.json(rows);
   } catch (err) {
-    console.error("Erreur GET /tontines:", err);
-    res.status(500).json({ error: "Erreur serveur" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// 📌 Créer une nouvelle tontine
-router.post("/", async (req, res) => {
+// 🔹 Créer une nouvelle tontine
+router.post('/', async (req, res) => {
+  const { nom, type, montant, frequence, jour, tirage, nbMembres, description, createur } = req.body;
   try {
-    const { nom, type, montant, membres_max, statut } = req.body;
-
-    if (!nom || !type || !montant) {
-      return res.status(400).json({ error: "Nom, type et montant requis" });
-    }
-
-    const r = await query(
-      `INSERT INTO tontines (user_id, nom, type, montant, membres_max, statut) 
-       VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'active')) 
+    const { rows } = await pool.query(
+      `INSERT INTO tontines 
+        (nom, type, montant_cotisation, frequence_cotisation, jour_cotisation, frequence_tirage, nombre_membres, description, createur) 
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) 
        RETURNING *`,
-      [req.user.id, nom, type, montant, membres_max, statut]
+      [nom, type, montant, frequence, jour, tirage, nbMembres, description, createur]
     );
-    res.status(201).json(r.rows[0]);
+    res.status(201).json(rows[0]);
   } catch (err) {
-    console.error("Erreur POST /tontines:", err);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-// 📌 Récupérer une tontine précise
-router.get("/:id", async (req, res) => {
-  try {
-    const r = await query(
-      `SELECT * FROM tontines WHERE id = $1 AND user_id = $2`,
-      [req.params.id, req.user.id]
-    );
-    if (r.rowCount === 0) return res.status(404).json({ error: "Tontine non trouvée" });
-    res.json(r.rows[0]);
-  } catch (err) {
-    console.error("Erreur GET /tontines/:id:", err);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-// 📌 Modifier une tontine
-router.put("/:id", async (req, res) => {
-  try {
-    const { nom, type, montant, membres_max, statut } = req.body;
-    const r = await query(
-      `UPDATE tontines 
-       SET nom = COALESCE($1, nom), 
-           type = COALESCE($2, type), 
-           montant = COALESCE($3, montant),
-           membres_max = COALESCE($4, membres_max), 
-           statut = COALESCE($5, statut)
-       WHERE id = $6 AND user_id = $7 
-       RETURNING *`,
-      [nom, type, montant, membres_max, statut, req.params.id, req.user.id]
-    );
-    if (r.rowCount === 0) return res.status(404).json({ error: "Tontine non trouvée" });
-    res.json(r.rows[0]);
-  } catch (err) {
-    console.error("Erreur PUT /tontines/:id:", err);
-    res.status(500).json({ error: "Erreur serveur" });
-  }
-});
-
-// 📌 Supprimer une tontine
-router.delete("/:id", async (req, res) => {
-  try {
-    const r = await query(
-      `DELETE FROM tontines WHERE id = $1 AND user_id = $2`,
-      [req.params.id, req.user.id]
-    );
-    if (r.rowCount === 0) return res.status(404).json({ error: "Tontine non trouvée" });
-    res.status(204).end();
-  } catch (err) {
-    console.error("Erreur DELETE /tontines/:id:", err);
-    res.status(500).json({ error: "Erreur serveur" });
+    res.status(500).json({ error: err.message });
   }
 });
 
