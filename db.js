@@ -1,16 +1,19 @@
-import pkg from 'pg';
-import dotenv from 'dotenv';
-
+// ESM
+import pkg from "pg";
+import dotenv from "dotenv";
 dotenv.config();
 
 const { Pool } = pkg;
 
-// ⚠️ Mets ceci dans ton fichier .env (Render > Environment Variables) :
-// SUPABASE_DB_URL=postgresql://postgres:password@host:5432/postgres
-
 const pool = new Pool({
   connectionString: process.env.SUPABASE_DB_URL,
-  ssl: { rejectUnauthorized: false } // obligatoire sur Render/Supabase
+  ssl: { rejectUnauthorized: false } // nécessaire sur Render/Supabase
 });
 
 export default pool;
+
+/* CJS:
+const { Pool } = require("pg");
+require("dotenv").config();
+module.exports = new Pool({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+*/
