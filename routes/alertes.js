@@ -10,7 +10,7 @@ router.get("/", async (req, res) => {
   try {
     // Récupérer toutes les tontines de l’utilisateur
     const tontinesRes = await query(
-      `select t.id, t.nom, t.montant, t.type, t.statut, t.frequence_cotisation, t.frequence_tirage 
+      `select t.id, t.nom, t.montant, t.type, t.statut
        from tontines t where t.user_id = $1`,
       [req.user.id]
     );
@@ -41,7 +41,8 @@ router.get("/", async (req, res) => {
       const tirages = tiragesRes.rows;
 
       // --- Exemple simple d’alertes ---
-      // Retards cotisations
+
+      // Retards cotisations (membre sans paiement)
       membres.forEach(m => {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
