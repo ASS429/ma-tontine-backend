@@ -15,18 +15,18 @@ import alertesRoutes from "./routes/alertes.js";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// === CORS CONFIG ===
+// === CONFIG CORS ===
 const allowedOrigin = process.env.ALLOWED_ORIGIN || "http://localhost:3000";
 
 const corsOptions = {
   origin: allowedOrigin,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+  allowedHeaders: "Origin,X-Requested-With,Content-Type,Accept,Authorization",
   credentials: true,
 };
 
 app.use(cors(corsOptions));
-// important pour répondre correctement aux préflights
+// 🔑 Important: gérer les preflight avant les routes
 app.options("*", cors(corsOptions));
 
 app.use(helmet());
