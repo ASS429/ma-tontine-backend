@@ -1,3 +1,4 @@
+// ma-tontine-backend/middleware/auth.js
 import jwt from "jsonwebtoken";
 
 export function requireAuth(req, res, next) {
@@ -12,19 +13,13 @@ export function requireAuth(req, res, next) {
   }
 
   try {
-    const payload = jwt.decode(token);
+    // Vérifie le token avec le secret Supabase
+    const payload = jwt.verify(token, process.env.SUPABASE_JWT_SECRET);
 
-    if (!payload?.sub) {
-      return res.status(401).json({ error: "Invalid token payload" });
-    }
-
-    // Supabase met le user.id dans "sub"
-    // email dans "email"
-    // rôle dans "role" (souvent "authenticated")
     req.user = {
       id: payload.sub,
       email: payload.email,
-      role: payload.role
+      role: payload.role || "authenticated"
     };
 
     next();
