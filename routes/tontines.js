@@ -98,4 +98,46 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 });
 
+/* -----------------------
+   📌 GET une tontine + ses membres + cotisations
+------------------------ */
+router.get("/:id", requireAuth, async (req, res) => {
+  const tontineId = req.params.id;
+
+  try {
+    // 1️⃣ Charger la tontine de l’utilisateur connecté
+    const { rows: tontineRows } = await pool.query(
+      `SELECT * FROM tontines WHERE id = $1 AND createur = $2`,
+      [tontineId, req.user.id]
+    );
+
+    if (tontineRows.length === 0) {
+      return res.status(404).json({ error: "Tontine introuvable ou non autorisée" });
+    }
+
+    const tontine = tontineRows[0];
+
+    // 2️⃣ Charger les membres de la tontine
+    const { rows: membres } = await pool.query(
+      `SELECT * FROM membres WHERE tontine_id = $1 ORDER BY nom`,
+      [tontineId]
+    );
+
+    // 3️⃣ Charger les cotisations de la tontine
+    const { rows: cotisations } = await pool.query(
+      `SELECT * FROM cotisations WHERE tontine_id = $1 ORDER BY date DESC`,
+      [tontineId]
+    );
+
+    // 4️⃣ Fusionner et envoyer
+    tontine.membres = membres;
+    tontine.cotisations = cotisations;
+
+    res.json(tontine);
+  } catch (err) {
+    console.error("Erreur fetch tontine:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
