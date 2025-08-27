@@ -5,20 +5,38 @@ import pool from "../db.js";
 const router = express.Router();
 
 /* -----------------------
-   📌 GET toutes mes tontines
+   📌 GET toutes mes tontines avec résumé
 ------------------------ */
 router.get("/", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM tontines WHERE createur = $1 ORDER BY cree_le DESC`,
+      `SELECT 
+          t.*,
+          COALESCE(m.nb_membres, 0) AS nombre_membres,
+          COALESCE(c.nb_cotisations, 0) AS nombre_cotisations
+       FROM tontines t
+       LEFT JOIN (
+          SELECT tontineid, COUNT(*) AS nb_membres
+          FROM membres
+          GROUP BY tontineid
+       ) m ON t.id = m.tontineid
+       LEFT JOIN (
+          SELECT tontineid, COUNT(*) AS nb_cotisations
+          FROM cotisations
+          GROUP BY tontineid
+       ) c ON t.id = c.tontineid
+       WHERE t.createur = $1
+       ORDER BY t.cree_le DESC`,
       [req.user.id]
     );
+
     res.json(rows);
   } catch (err) {
     console.error("Erreur fetch tontines:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /* -----------------------
    📌 POST créer une tontine
