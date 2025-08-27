@@ -99,15 +99,15 @@ router.delete("/:id", requireAuth, async (req, res) => {
 });
 
 /* -----------------------
-   📌 GET une tontine + ses membres + cotisations
+   📌 GET une tontine avec détails (membres + cotisations)
 ------------------------ */
 router.get("/:id", requireAuth, async (req, res) => {
   const tontineId = req.params.id;
 
   try {
-    // 1️⃣ Charger la tontine de l’utilisateur connecté
+    // 1. Vérifier que la tontine existe et appartient à l’utilisateur
     const { rows: tontineRows } = await pool.query(
-      `SELECT * FROM tontines WHERE id = $1 AND createur = $2`,
+      `SELECT * FROM tontines WHERE id=$1 AND createur=$2`,
       [tontineId, req.user.id]
     );
 
@@ -117,25 +117,33 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     const tontine = tontineRows[0];
 
-    // 2️⃣ Charger les membres de la tontine
+    // 2. Récupérer les membres de la tontine (triés par date_ajout ASC)
     const { rows: membres } = await pool.query(
-      `SELECT * FROM membres WHERE tontine_id = $1 ORDER BY nom`,
+      `SELECT id, nom, date_ajout 
+       FROM membres 
+       WHERE tontineid=$1 
+       ORDER BY date_ajout ASC`,
       [tontineId]
     );
 
-    // 3️⃣ Charger les cotisations de la tontine
+    // 3. Récupérer les cotisations (triées par date DESC)
     const { rows: cotisations } = await pool.query(
-      `SELECT * FROM cotisations WHERE tontine_id = $1 ORDER BY date DESC`,
+      `SELECT id, membreid, montant, date 
+       FROM cotisations 
+       WHERE tontineid=$1 
+       ORDER BY date DESC`,
       [tontineId]
     );
 
-    // 4️⃣ Fusionner et envoyer
-    tontine.membres = membres;
-    tontine.cotisations = cotisations;
+    // 4. Retourner un objet complet
+    res.json({
+      ...tontine,
+      membres,
+      cotisations
+    });
 
-    res.json(tontine);
   } catch (err) {
-    console.error("Erreur fetch tontine:", err.message);
+    console.error("Erreur fetch tontine complète:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
