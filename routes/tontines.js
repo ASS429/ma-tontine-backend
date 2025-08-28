@@ -23,7 +23,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     const tontine = tontineRows[0];
 
-    // 2. Récupérer les membres de la tontine
+    // 2. Récupérer les membres
     const { rows: membres } = await pool.query(
       `SELECT id, nom, cree_le 
        FROM membres 
@@ -48,7 +48,7 @@ router.get("/:id", requireAuth, async (req, res) => {
       cotisations
     });
   } catch (err) {
-    console.error("Erreur fetch tontine complète:", err);
+    console.error("Erreur fetch tontine complète:", err); // 🔹 log complet
     res.status(500).json({ error: err.message });
   }
 });
