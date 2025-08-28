@@ -23,7 +23,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     const tontine = tontineRows[0];
 
-    // 2. Récupérer les membres de la tontine (triés par date d’ajout ASC)
+    // 2. Récupérer les membres de la tontine
     const { rows: membres } = await pool.query(
       `SELECT id, nom, cree_le 
        FROM membres 
@@ -32,7 +32,7 @@ router.get("/:id", requireAuth, async (req, res) => {
       [tontineId]
     );
 
-    // 3. Récupérer les cotisations (triées par date DESC)
+    // 3. Récupérer les cotisations
     const { rows: cotisations } = await pool.query(
       `SELECT id, membre_id, montant, date_cotisation 
        FROM cotisations 
@@ -47,7 +47,6 @@ router.get("/:id", requireAuth, async (req, res) => {
       membres,
       cotisations
     });
-
   } catch (err) {
     console.error("Erreur fetch tontine complète:", err);
     res.status(500).json({ error: err.message });
