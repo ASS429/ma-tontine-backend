@@ -12,8 +12,14 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL, // ou ["http://localhost:5173", process.env.FRONTEND_URL]
+  origin: [
+    "http://localhost:5173",               // pour le dev
+    process.env.FRONTEND_URL,              // ton URL Render (déjà dans ton .env)
+    "https://ma-tontine-frontend-1.onrender.com" // ajoute explicitement
+  ],
+  credentials: true,
 }));
+
 app.use(express.json());
 
 // Health check
