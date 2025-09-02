@@ -40,7 +40,8 @@ router.get("/:tontineId", requireAuth, async (req, res) => {
    📌 POST ajouter une cotisation
 ------------------------ */
 router.post("/", requireAuth, async (req, res) => {
-  const { tontineId, membreId, date } = req.body;
+  // ✅ On récupère en camelCase
+  const { tontineId, membreId, dateCotisation } = req.body;
 
   if (!tontineId || !membreId) {
     return res.status(400).json({ error: "Champs manquants" });
@@ -58,10 +59,16 @@ router.post("/", requireAuth, async (req, res) => {
 
     const montant = tontine[0].montant_cotisation;
 
+    // ✅ On mappe camelCase → snake_case pour la DB
     const { rows } = await pool.query(
       `INSERT INTO cotisations (tontine_id, membre_id, montant, date_cotisation)
        VALUES ($1,$2,$3,$4) RETURNING *`,
-      [tontineId, membreId, montant, date || new Date().toISOString().split("T")[0]]
+      [
+        tontineId,
+        membreId,
+        montant,
+        dateCotisation || new Date().toISOString().split("T")[0]
+      ]
     );
 
     res.status(201).json(rows[0]);
