@@ -99,4 +99,45 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 });
 
+/* -----------------------
+   📌 PUT modifier un membre
+------------------------ */
+router.put("/:id", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const { nom, dateAjout } = req.body;
+
+  if (!nom) {
+    return res.status(400).json({ error: "Le nom est obligatoire" });
+  }
+
+  try {
+    // Vérifier que le membre appartient à une tontine du user
+    const { rows: membre } = await pool.query(
+      `SELECT m.id
+       FROM membres m
+       JOIN tontines t ON t.id = m.tontine_id
+       WHERE m.id=$1 AND t.createur=$2`,
+      [id, req.user.id]
+    );
+
+    if (membre.length === 0) {
+      return res.status(403).json({ error: "Non autorisé" });
+    }
+
+    // Mise à jour
+    const { rows } = await pool.query(
+      `UPDATE membres 
+       SET nom=$1, cree_le=$2
+       WHERE id=$3 
+       RETURNING *`,
+      [nom, dateAjout || new Date().toISOString(), id]
+    );
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("Erreur modification membre:", err.message);
+    res.status(500).json({ error: "Erreur serveur interne" });
+  }
+});
+
 export default router;
