@@ -48,7 +48,6 @@ router.get("/overview", async (req, res) => {
          WHERE t.createur = $1`,
         [req.user.id]
       ),
-      // 🔹 Retards (cotisations en retard par rapport à la date du jour)
       client.query(
         `SELECT count(*)::int as total
          FROM membres m
@@ -61,7 +60,6 @@ router.get("/overview", async (req, res) => {
            )`,
         [req.user.id]
       ),
-      // 🔹 Paiements en attente (membres sans cotisation pour la période en cours)
       client.query(
         `SELECT count(*)::int as total
          FROM membres m
@@ -74,7 +72,6 @@ router.get("/overview", async (req, res) => {
            )`,
         [req.user.id]
       ),
-      // 🔹 Tirages disponibles (toutes cotisations faites ce mois)
       client.query(
         `SELECT count(*)::int as total
          FROM tontines t
@@ -105,6 +102,63 @@ router.get("/overview", async (req, res) => {
     client.release();
   } catch (err) {
     console.error("❌ Erreur stats overview:", err);
+    res.status(500).json({ error: "Erreur serveur interne" });
+  }
+});
+
+/* -------------------------------
+   📊 Récupérer les stats détaillées
+-------------------------------- */
+router.get("/details", async (req, res) => {
+  try {
+    const client = await pool.connect();
+
+    // 1️⃣ Répartition par type
+    const types = await client.query(
+      `SELECT type, count(*)::int as total
+       FROM tontines
+       WHERE createur = $1
+       GROUP BY type`,
+      [req.user.id]
+    );
+
+    // 2️⃣ Cotisations par mois
+    const cotisations = await client.query(
+      `SELECT to_char(date_trunc('month', c.date_cotisation), 'YYYY-MM') as mois,
+              sum(c.montant)::float as total
+       FROM cotisations c
+       JOIN tontines t ON t.id = c.tontine_id
+       WHERE t.createur = $1
+       GROUP BY 1
+       ORDER BY 1 ASC`,
+      [req.user.id]
+    );
+
+    // 3️⃣ Tableau de performance
+    const performance = await client.query(
+      `SELECT t.id, t.nom, t.type, t.statut, t.nombre_membres,
+              count(DISTINCT m.id)::int as membres_actuels,
+              coalesce(sum(c.montant),0)::float as total_cotisations,
+              count(DISTINCT ti.id)::int as tirages_effectues
+       FROM tontines t
+       LEFT JOIN membres m ON m.tontine_id = t.id
+       LEFT JOIN cotisations c ON c.tontine_id = t.id
+       LEFT JOIN tirages ti ON ti.tontine_id = t.id
+       WHERE t.createur = $1
+       GROUP BY t.id, t.nom, t.type, t.statut, t.nombre_membres
+       ORDER BY t.cree_le DESC`,
+      [req.user.id]
+    );
+
+    res.json({
+      types: types.rows,
+      cotisations: cotisations.rows,
+      performance: performance.rows
+    });
+
+    client.release();
+  } catch (err) {
+    console.error("❌ Erreur stats details:", err);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
