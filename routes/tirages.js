@@ -1,9 +1,9 @@
 import express from "express";
-import { authenticate } from "../middleware/auth.js";
+import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 
 const router = express.Router();
-router.use(authenticate);
+router.use(requireAuth);
 
 // List tirages for tontine
 router.get("/:tontineId", async (req, res) => {
