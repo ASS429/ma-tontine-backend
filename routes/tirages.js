@@ -11,10 +11,9 @@ router.get("/:tontineId", async (req, res) => {
     `select ti.*, m.nom as membre_nom, m.prenom as membre_prenom
      from tirages ti
      join membres m on m.id = ti.membre_id
-     join tontines t on t.id = ti.tontine_id
-     where ti.tontine_id = $1 and t.user_id = $2
+     where ti.tontine_id = $1
      order by ti.ordre asc`,
-    [req.params.tontineId, req.user.id]
+    [req.params.tontineId]
   );
   res.json(r.rows);
 });
