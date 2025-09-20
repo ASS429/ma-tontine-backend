@@ -11,16 +11,16 @@ router.use(requireAuth);
 router.get("/:tontineId", async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT ti.*, m.nom AS membre_nom, m.prenom AS membre_prenom
+      `SELECT ti.*, m.nom AS membre_nom
        FROM tirages ti
        JOIN membres m ON m.id = ti.membre_id
        WHERE ti.tontine_id = $1
-       ORDER BY ti.ordre ASC`,
+       ORDER BY ti.date_tirage ASC`,
       [req.params.tontineId]
     );
     res.json(r.rows);
   } catch (err) {
-    console.error("Erreur GET tirages:", err.message);
+    console.error("Erreur GET tirages:", err.stack);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
@@ -55,27 +55,18 @@ router.post("/run/:tontineId", async (req, res) => {
       return res.status(400).json({ error: "Tous les membres ont été tirés" });
     }
 
-    // Déterminer le prochain ordre
-    const nextOrderRes = await pool.query(
-      `SELECT COALESCE(MAX(ordre), 0) + 1 AS next 
-       FROM tirages 
-       WHERE tontine_id = $1`,
-      [tontineId]
-    );
-    const nextOrder = nextOrderRes.rows[0].next;
-
-    // Insérer le tirage
+    // Insérer le tirage (date_tirage est auto-générée par défaut)
     const chosen = remaining.rows[0].id;
     const r = await pool.query(
-      `INSERT INTO tirages (tontine_id, membre_id, ordre) 
-       VALUES ($1, $2, $3) 
+      `INSERT INTO tirages (tontine_id, membre_id) 
+       VALUES ($1, $2) 
        RETURNING *`,
-      [tontineId, chosen, nextOrder]
+      [tontineId, chosen]
     );
 
     res.status(201).json(r.rows[0]);
   } catch (err) {
-    console.error("Erreur POST tirage:", err.message);
+    console.error("Erreur POST tirage:", err.stack);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
@@ -100,7 +91,7 @@ router.delete("/:id", async (req, res) => {
 
     res.status(204).end();
   } catch (err) {
-    console.error("Erreur DELETE tirage:", err.message);
+    console.error("Erreur DELETE tirage:", err.stack);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
