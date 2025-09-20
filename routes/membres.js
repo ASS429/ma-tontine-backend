@@ -76,7 +76,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Vérifier que le membre appartient à une tontine de l'utilisateur
+    // Vérifier que le membre appartient bien à une tontine de l'utilisateur connecté
     const { rows: membre } = await pool.query(
       `SELECT m.id, m.tontine_id
        FROM membres m
@@ -89,7 +89,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Non autorisé" });
     }
 
-    // Supprimer le membre (⚠️ si ta table cotisations a FOREIGN KEY ON DELETE CASCADE, ses cotisations seront supprimées automatiquement)
+    // Supprimer le membre (⚠️ cascade = supprime cotisations et tirages liés)
     await pool.query("DELETE FROM membres WHERE id=$1", [id]);
 
     res.json({ success: true, message: "Membre supprimé avec succès" });
@@ -98,6 +98,5 @@ router.delete("/:id", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
-
 
 export default router;
