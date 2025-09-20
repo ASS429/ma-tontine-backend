@@ -143,4 +143,53 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 });
 
+/* -----------------------
+   📌 PUT modifier une tontine
+------------------------ */
+router.put("/:id", requireAuth, async (req, res) => {
+  const tontineId = req.params.id;
+  const {
+    nom,
+    type,
+    montant_cotisation,
+    frequence_cotisation,
+    jour_cotisation,
+    frequence_tirage,
+    nombre_membres,
+    description,
+  } = req.body;
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE tontines
+       SET nom=$1, type=$2, montant_cotisation=$3, frequence_cotisation=$4,
+           jour_cotisation=$5, frequence_tirage=$6, nombre_membres=$7,
+           description=$8
+       WHERE id=$9 AND createur=$10
+       RETURNING *`,
+      [
+        nom,
+        type,
+        montant_cotisation,
+        frequence_cotisation,
+        jour_cotisation,
+        frequence_tirage,
+        nombre_membres,
+        description || null,
+        tontineId,
+        req.user.id
+      ]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Tontine introuvable ou non autorisée" });
+    }
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("Erreur modification tontine:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
