@@ -1,63 +1,108 @@
 import express from "express";
 import { requireAuth } from "../middleware/auth.js";
-import { query } from "../db.js";
+import pool from "../db.js";
 
 const router = express.Router();
 router.use(requireAuth);
 
-// List tirages for tontine
+/* -----------------------
+   📌 GET tirages d’une tontine
+------------------------ */
 router.get("/:tontineId", async (req, res) => {
-  const r = await query(
-    `select ti.*, m.nom as membre_nom, m.prenom as membre_prenom
-     from tirages ti
-     join membres m on m.id = ti.membre_id
-     where ti.tontine_id = $1
-     order by ti.ordre asc`,
-    [req.params.tontineId]
-  );
-  res.json(r.rows);
+  try {
+    const r = await pool.query(
+      `SELECT ti.*, m.nom AS membre_nom, m.prenom AS membre_prenom
+       FROM tirages ti
+       JOIN membres m ON m.id = ti.membre_id
+       WHERE ti.tontine_id = $1
+       ORDER BY ti.ordre ASC`,
+      [req.params.tontineId]
+    );
+    res.json(r.rows);
+  } catch (err) {
+    console.error("Erreur GET tirages:", err.message);
+    res.status(500).json({ error: "Erreur serveur interne" });
+  }
 });
 
-// Run a new tirage (random among members not yet drawn)
+/* -----------------------
+   📌 POST exécuter un tirage
+------------------------ */
 router.post("/run/:tontineId", async (req, res) => {
-  const tontineId = req.params.tontineId;
-  // verify ownership
-  const t = await query(`select id from tontines where id = $1 and user_id = $2`, [tontineId, req.user.id]);
-  if (t.rowCount === 0) return res.status(404).json({ error: "Tontine not found" });
+  const { tontineId } = req.params;
 
-  // find remaining members
-  const remaining = await query(
-    `select m.id from membres m
-     where m.tontine_id = $1 and m.id not in (select membre_id from tirages where tontine_id = $1)
-     order by random() limit 1`,
-    [tontineId]
-  );
-  if (remaining.rowCount === 0) return res.status(400).json({ error: "Tous les membres ont été tirés" });
+  try {
+    // Vérifier que la tontine appartient à l'utilisateur connecté
+    const t = await pool.query(
+      `SELECT id FROM tontines WHERE id = $1 AND createur = $2`,
+      [tontineId, req.user.id]
+    );
+    if (t.rowCount === 0) {
+      return res.status(404).json({ error: "Tontine non trouvée" });
+    }
 
-  const nextOrderRes = await query(`select coalesce(max(ordre), 0) + 1 as next from tirages where tontine_id = $1`, [tontineId]);
-  const nextOrder = nextOrderRes.rows[0].next;
+    // Sélectionner un membre restant aléatoirement
+    const remaining = await pool.query(
+      `SELECT m.id 
+       FROM membres m
+       WHERE m.tontine_id = $1 
+         AND m.id NOT IN (SELECT membre_id FROM tirages WHERE tontine_id = $1)
+       ORDER BY random()
+       LIMIT 1`,
+      [tontineId]
+    );
+    if (remaining.rowCount === 0) {
+      return res.status(400).json({ error: "Tous les membres ont été tirés" });
+    }
 
-  const chosen = remaining.rows[0].id;
-  const r = await query(
-    `insert into tirages (tontine_id, membre_id, ordre) values ($1, $2, $3) returning *`,
-    [tontineId, chosen, nextOrder]
-  );
-  res.status(201).json(r.rows[0]);
+    // Déterminer le prochain ordre
+    const nextOrderRes = await pool.query(
+      `SELECT COALESCE(MAX(ordre), 0) + 1 AS next 
+       FROM tirages 
+       WHERE tontine_id = $1`,
+      [tontineId]
+    );
+    const nextOrder = nextOrderRes.rows[0].next;
+
+    // Insérer le tirage
+    const chosen = remaining.rows[0].id;
+    const r = await pool.query(
+      `INSERT INTO tirages (tontine_id, membre_id, ordre) 
+       VALUES ($1, $2, $3) 
+       RETURNING *`,
+      [tontineId, chosen, nextOrder]
+    );
+
+    res.status(201).json(r.rows[0]);
+  } catch (err) {
+    console.error("Erreur POST tirage:", err.message);
+    res.status(500).json({ error: "Erreur serveur interne" });
+  }
 });
 
-// Supprimer un tirage
+/* -----------------------
+   📌 DELETE supprimer un tirage
+------------------------ */
 router.delete("/:id", async (req, res) => {
-  const r = await query(
-    `delete from tirages ti
-     using tontines t
-     where ti.id = $1
-       and t.id = ti.tontine_id
-       and t.user_id = $2`,
-    [req.params.id, req.user.id]
-  );
-  if (r.rowCount === 0) return res.status(404).json({ error: "Tirage non trouvé" });
-  res.status(204).end();
-});
+  try {
+    const r = await pool.query(
+      `DELETE FROM tirages ti
+       USING tontines t
+       WHERE ti.id = $1
+         AND t.id = ti.tontine_id
+         AND t.createur = $2`,
+      [req.params.id, req.user.id]
+    );
 
+    if (r.rowCount === 0) {
+      return res.status(404).json({ error: "Tirage non trouvé" });
+    }
+
+    res.status(204).end();
+  } catch (err) {
+    console.error("Erreur DELETE tirage:", err.message);
+    res.status(500).json({ error: "Erreur serveur interne" });
+  }
+});
 
 export default router;
