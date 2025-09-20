@@ -7,7 +7,7 @@ import membresRoutes from "./routes/membres.js";
 import cotisationsRoutes from "./routes/cotisations.js";
 import utilisateursRoutes from "./routes/utilisateurs.js";
 import authRoutes from "./routes/auth.js";
-import tiragesRoutes from "./routes/tirages.js"; 
+import tiragesRoutes from "./routes/tirages.js"; // 👈 ajoute ceci
 
 dotenv.config();
 const app = express();
@@ -32,7 +32,7 @@ app.use("/api/membres", membresRoutes);
 app.use("/api/cotisations", cotisationsRoutes);
 app.use("/api/utilisateurs", utilisateursRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/tirages", tiragesRoutes); 
+app.use("/api/tirages", tiragesRoutes); // 👈 monte tes routes tirages
 
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
