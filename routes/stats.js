@@ -1,32 +1,50 @@
 import express from "express";
-import { requireAuth } from "../middleware/auth.js"; // tu avais authenticate → garde le même nom que dans tes autres routes
+import { requireAuth } from "../middleware/auth.js";
 import pool from "../db.js";
 
 const router = express.Router();
 router.use(requireAuth);
 
-// 📊 Récupérer les stats globales de l’utilisateur connecté
+/* -------------------------------
+   📊 Récupérer les stats globales
+-------------------------------- */
 router.get("/overview", async (req, res) => {
   try {
     const [{ rows: tCount }, { rows: mCount }, { rows: cSum }, { rows: dCount }] = await Promise.all([
-      pool.query(`SELECT count(*)::int as total 
-                  FROM tontines 
-                  WHERE createur = $1`, [req.user.id]),
+      // 🔹 Tontines actives
+      pool.query(
+        `SELECT count(*)::int as total 
+         FROM tontines 
+         WHERE createur = $1 AND statut = 'active'`,
+        [req.user.id]
+      ),
 
-      pool.query(`SELECT count(*)::int as total 
-                  FROM membres m 
-                  JOIN tontines t ON t.id = m.tontine_id 
-                  WHERE t.createur = $1`, [req.user.id]),
+      // 🔹 Membres total
+      pool.query(
+        `SELECT count(*)::int as total 
+         FROM membres m 
+         JOIN tontines t ON t.id = m.tontine_id 
+         WHERE t.createur = $1`,
+        [req.user.id]
+      ),
 
-      pool.query(`SELECT coalesce(sum(montant),0)::float as total 
-                  FROM cotisations c 
-                  JOIN tontines t ON t.id = c.tontine_id 
-                  WHERE t.createur = $1`, [req.user.id]),
+      // 🔹 Montant total collecté (cotisations)
+      pool.query(
+        `SELECT coalesce(sum(montant),0)::float as total 
+         FROM cotisations c 
+         JOIN tontines t ON t.id = c.tontine_id 
+         WHERE t.createur = $1`,
+        [req.user.id]
+      ),
 
-      pool.query(`SELECT count(*)::int as total 
-                  FROM tirages ti 
-                  JOIN tontines t ON t.id = ti.tontine_id 
-                  WHERE t.createur = $1`, [req.user.id])
+      // 🔹 Tirages effectués
+      pool.query(
+        `SELECT count(*)::int as total 
+         FROM tirages ti 
+         JOIN tontines t ON t.id = ti.tontine_id 
+         WHERE t.createur = $1`,
+        [req.user.id]
+      )
     ]);
 
     res.json({
@@ -36,7 +54,7 @@ router.get("/overview", async (req, res) => {
       tirages_effectues: dCount[0].total
     });
   } catch (err) {
-    console.error("Erreur stats overview:", err);
+    console.error("❌ Erreur stats overview:", err);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
