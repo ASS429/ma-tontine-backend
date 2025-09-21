@@ -5,22 +5,24 @@ import pool from "../db.js";
 const router = express.Router();
 
 /* -----------------------
-   📌 GET membres + cotisations d’une tontine
+   📌 GET détail complet d’une tontine
+   (infos + membres + cotisations)
 ------------------------ */
-router.get("/:tontineId/avec-cotisations", requireAuth, async (req, res) => {
-  const { tontineId } = req.params;
+router.get("/:id", requireAuth, async (req, res) => {
+  const { id } = req.params;
 
   try {
-    // Vérifier que la tontine appartient à l’utilisateur
-    const { rows: tontine } = await pool.query(
-      "SELECT id FROM tontines WHERE id=$1 AND createur=$2",
-      [tontineId, req.user.id]
+    // 1️⃣ Vérifier que la tontine appartient à l’utilisateur
+    const { rows: tontines } = await pool.query(
+      "SELECT * FROM tontines WHERE id=$1 AND createur=$2",
+      [id, req.user.id]
     );
-    if (tontine.length === 0) {
+    if (tontines.length === 0) {
       return res.status(403).json({ error: "Non autorisé" });
     }
+    const tontine = tontines[0];
 
-    // Récupérer membres + cotisations
+    // 2️⃣ Charger membres + cotisations
     const { rows } = await pool.query(
       `SELECT m.id AS membre_id, m.nom, m.telephone, m.adresse, m.cree_le,
               c.id AS cotisation_id, c.montant, c.date_cotisation
@@ -28,10 +30,10 @@ router.get("/:tontineId/avec-cotisations", requireAuth, async (req, res) => {
        LEFT JOIN cotisations c ON c.membre_id = m.id
        WHERE m.tontine_id=$1
        ORDER BY m.cree_le ASC, c.date_cotisation ASC`,
-      [tontineId]
+      [id]
     );
 
-    // Normaliser les résultats côté backend
+    // 3️⃣ Normaliser côté backend
     const membresMap = {};
     for (const r of rows) {
       if (!membresMap[r.membre_id]) {
@@ -53,9 +55,12 @@ router.get("/:tontineId/avec-cotisations", requireAuth, async (req, res) => {
       }
     }
 
-    res.json(Object.values(membresMap));
+    // 4️⃣ Ajouter les membres normalisés dans l’objet tontine
+    tontine.membres = Object.values(membresMap);
+
+    res.json(tontine);
   } catch (err) {
-    console.error("❌ Erreur fetch membres + cotisations:", err.message);
+    console.error("❌ Erreur GET /tontines/:id:", err.message);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
