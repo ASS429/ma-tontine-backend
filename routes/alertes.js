@@ -6,71 +6,109 @@ const router = express.Router();
 router.use(requireAuth);
 
 /* -------------------------------
-   📌 GET toutes les alertes
+   📌 GET toutes les alertes dynamiques
 -------------------------------- */
 router.get("/", async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    // Récupérer toutes les tontines de l’utilisateur
+    const { rows: tontines } = await pool.query(
       `SELECT *
-       FROM alertes
-       WHERE "utilisateurId" = $1
-       ORDER BY "dateCreation" DESC`,
+       FROM tontines
+       WHERE createur = $1`,
       [req.user.id]
     );
 
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ Erreur récupération alertes:", err);
-    res.status(500).json({ error: "Erreur récupération alertes" });
-  }
-});
+    let alertes = [];
 
-/* -------------------------------
-   📌 POST créer une nouvelle alerte
--------------------------------- */
-router.post("/", async (req, res) => {
-  const { tontineId, type, message, urgence } = req.body;
+    for (const tontine of tontines) {
+      // Membres de la tontine
+      const { rows: membres } = await pool.query(
+        `SELECT * FROM membres WHERE tontine_id = $1`,
+        [tontine.id]
+      );
 
-  if (!tontineId || !type || !message || !urgence) {
-    return res.status(400).json({ error: "Champs obligatoires manquants" });
-  }
+      // Paiements de la tontine
+      const { rows: paiements } = await pool.query(
+        `SELECT * FROM cotisations WHERE tontine_id = $1`,
+        [tontine.id]
+      );
 
-  try {
-    const { rows } = await pool.query(
-      `INSERT INTO alertes ("utilisateurId", "tontineId", type, message, urgence, "dateCreation")
-       VALUES ($1, $2, $3, $4, $5, now())
-       RETURNING *`,
-      [req.user.id, tontineId, type, message, urgence]
-    );
+      // Tirages de la tontine
+      const { rows: tirages } = await pool.query(
+        `SELECT * FROM tirages WHERE tontine_id = $1 ORDER BY date_tirage ASC`,
+        [tontine.id]
+      );
 
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error("❌ Erreur création alerte:", err);
-    res.status(500).json({ error: "Erreur création alerte" });
-  }
-});
+      /* -------------------------
+         1. Retards cotisations
+      ------------------------- */
+      membres.forEach(m => {
+        const aCotise = paiements.some(p => p.membre_id === m.id);
+        if (!aCotise) {
+          alertes.push({
+            id: `${tontine.id}-${m.id}-retard`,
+            tontineId: tontine.id,
+            type: "retard",
+            message: `${m.nom} est en retard dans "${tontine.nom}"`,
+            urgence: "moyenne",
+            dateCreation: new Date()
+          });
+        }
+      });
 
-/* -------------------------------
-   📌 DELETE une alerte par ID
--------------------------------- */
-router.delete("/:id", async (req, res) => {
-  const alerteId = req.params.id;
+      /* -------------------------
+         2. Tirage disponible
+      ------------------------- */
+      if (paiements.length >= membres.length && tirages.length < membres.length) {
+        alertes.push({
+          id: `${tontine.id}-tirage`,
+          tontineId: tontine.id,
+          type: "tirage",
+          message: `🎲 Tirage disponible pour "${tontine.nom}"`,
+          urgence: "haute",
+          dateCreation: new Date()
+        });
+      }
 
-  try {
-    const { rowCount } = await pool.query(
-      `DELETE FROM alertes
-       WHERE id = $1 AND "utilisateurId" = $2`,
-      [alerteId, req.user.id]
-    );
+      /* -------------------------
+         3. Cycle en retard
+         (ex: cotisations complètes mais tirage pas encore fait)
+      ------------------------- */
+      if (paiements.length >= membres.length && tirages.length === 0) {
+        alertes.push({
+          id: `${tontine.id}-cycle-retard`,
+          tontineId: tontine.id,
+          type: "cycle_retard",
+          message: `⏳ Cycle en retard pour "${tontine.nom}" (tirage manquant)`,
+          urgence: "moyenne",
+          dateCreation: new Date()
+        });
+      }
 
-    if (rowCount === 0) {
-      return res.status(404).json({ error: "Alerte introuvable ou non autorisée" });
+      /* -------------------------
+         4. Paiements en attente
+         (ex: période en cours, mais certains n’ont pas encore payé)
+      ------------------------- */
+      membres.forEach(m => {
+        const aCotise = paiements.some(p => p.membre_id === m.id);
+        if (!aCotise) {
+          alertes.push({
+            id: `${tontine.id}-${m.id}-paiement-attente`,
+            tontineId: tontine.id,
+            type: "paiement_attente",
+            message: `💳 Paiement attendu de ${m.nom} dans "${tontine.nom}"`,
+            urgence: "basse",
+            dateCreation: new Date()
+          });
+        }
+      });
     }
 
-    res.json({ success: true, message: "Alerte supprimée avec succès" });
+    // 🔹 Retourner les alertes générées dynamiquement
+    res.json(alertes);
   } catch (err) {
-    console.error("❌ Erreur suppression alerte:", err);
-    res.status(500).json({ error: "Erreur suppression alerte" });
+    console.error("❌ Erreur récupération alertes dynamiques:", err);
+    res.status(500).json({ error: "Erreur récupération alertes dynamiques" });
   }
 });
 
