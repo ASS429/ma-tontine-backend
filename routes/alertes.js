@@ -14,8 +14,8 @@ router.get("/", async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT * FROM alertes 
-       WHERE utilisateurid=$1 
-       ORDER BY datecreation DESC`,
+       WHERE "utilisateurId"=$1 
+       ORDER BY "dateCreation" DESC`,
       [req.user.id]
     );
 
@@ -57,8 +57,8 @@ router.post("/generer", async (req, res) => {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
           nouvellesAlertes.push({
-            utilisateurid: req.user.id,
-            tontineid: tontine.id,
+            utilisateurId: req.user.id,
+            tontineId: tontine.id,
             type: "retard",
             message: `${m.nom} est en retard dans "${tontine.nom}"`,
             urgence: "moyenne"
@@ -69,8 +69,8 @@ router.post("/generer", async (req, res) => {
       // 2️⃣ Tirage disponible
       if (paiements.length >= membres.length && tirages.length < membres.length) {
         nouvellesAlertes.push({
-          utilisateurid: req.user.id,
-          tontineid: tontine.id,
+          utilisateurId: req.user.id,
+          tontineId: tontine.id,
           type: "tirage",
           message: `🎲 Tirage disponible pour "${tontine.nom}"`,
           urgence: "haute"
@@ -80,8 +80,8 @@ router.post("/generer", async (req, res) => {
       // 3️⃣ Cycle en retard
       if (paiements.length >= membres.length && tirages.length === 0) {
         nouvellesAlertes.push({
-          utilisateurid: req.user.id,
-          tontineid: tontine.id,
+          utilisateurId: req.user.id,
+          tontineId: tontine.id,
           type: "cycle_retard",
           message: `⏳ Cycle en retard pour "${tontine.nom}" (tirage manquant)`,
           urgence: "moyenne"
@@ -93,8 +93,8 @@ router.post("/generer", async (req, res) => {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
           nouvellesAlertes.push({
-            utilisateurid: req.user.id,
-            tontineid: tontine.id,
+            utilisateurId: req.user.id,
+            tontineId: tontine.id,
             type: "paiement_attente",
             message: `💳 Paiement attendu de ${m.nom} dans "${tontine.nom}"`,
             urgence: "basse"
@@ -103,18 +103,18 @@ router.post("/generer", async (req, res) => {
       }
     }
 
-    // 🔹 Insertion sans doublons
+    // 🔹 Insertion en DB avec guillemets
     const inserted = [];
     for (const alerte of nouvellesAlertes) {
       try {
         const { rows } = await pool.query(
-          `INSERT INTO alertes (utilisateurid, tontineid, type, message, urgence)
+          `INSERT INTO alertes ("utilisateurId","tontineId",type,message,urgence)
            VALUES ($1,$2,$3,$4,$5)
-           ON CONFLICT DO NOTHING
+           ON CONFLICT ("utilisateurId","tontineId",type,message) DO NOTHING
            RETURNING *`,
           [
-            alerte.utilisateurid,
-            alerte.tontineid,
+            alerte.utilisateurId,
+            alerte.tontineId,
             alerte.type,
             alerte.message,
             alerte.urgence
@@ -142,7 +142,7 @@ router.delete("/:id", async (req, res) => {
 
     const { rowCount } = await pool.query(
       `DELETE FROM alertes 
-       WHERE id=$1 AND utilisateurid=$2`,
+       WHERE id=$1 AND "utilisateurId"=$2`,
       [id, req.user.id]
     );
 
