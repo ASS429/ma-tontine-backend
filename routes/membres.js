@@ -101,13 +101,14 @@ router.delete("/:id", requireAuth, async (req, res) => {
 ------------------------ */
 router.put("/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
-  const { nom, telephone, adresse, dateAjout } = req.body;
+  const { nom, telephone, adresse } = req.body;
 
   if (!nom) {
     return res.status(400).json({ error: "Le nom est obligatoire" });
   }
 
   try {
+    // Vérifier droits
     const { rows: membre } = await pool.query(
       `SELECT m.id
        FROM membres m
@@ -120,12 +121,13 @@ router.put("/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Non autorisé" });
     }
 
+    // Mise à jour (⚠️ on garde cree_le intact)
     const { rows } = await pool.query(
       `UPDATE membres 
-       SET nom=$1, telephone=$2, adresse=$3, cree_le=$4
-       WHERE id=$5 
+       SET nom=$1, telephone=$2, adresse=$3, modifie_le=NOW()
+       WHERE id=$4 
        RETURNING *`,
-      [nom, telephone || null, adresse || null, dateAjout || new Date().toISOString(), id]
+      [nom, telephone || null, adresse || null, id]
     );
 
     res.json(rows[0]);
@@ -134,5 +136,6 @@ router.put("/:id", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
+
 
 export default router;
