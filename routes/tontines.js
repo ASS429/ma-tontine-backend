@@ -34,9 +34,8 @@ router.get("/:id", requireAuth, async (req, res) => {
   try {
     // Vérifier appartenance
     const { rows: tontineRows } = await pool.query(
-      `SELECT id, nom, type, montant_cotisation, frequence_cotisation, jour_cotisation,
-              frequence_tirage, nombre_membres, description, statut, cree_le
-       FROM tontines
+      `SELECT *
+       FROM tontines 
        WHERE id=$1 AND createur=$2`,
       [tontineId, req.user.id]
     );
@@ -45,7 +44,7 @@ router.get("/:id", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Tontine introuvable ou non autorisée" });
     }
 
-    const tontine = tontineRows[0];
+    const t = tontineRows[0];
 
     // Récupérer membres
     const { rows: membres } = await pool.query(
@@ -65,16 +64,50 @@ router.get("/:id", requireAuth, async (req, res) => {
       [tontineId]
     );
 
-    res.json({
-      ...tontine,
+    // Récupérer tirages
+    const { rows: tirages } = await pool.query(
+      `SELECT id, membre_id, date_tirage 
+       FROM tirages 
+       WHERE tontine_id=$1 
+       ORDER BY date_tirage ASC`,
+      [tontineId]
+    );
+
+    // Récupérer gagnants
+    const { rows: gagnants } = await pool.query(
+      `SELECT membre_id, date_tirage
+       FROM tirages 
+       WHERE tontine_id=$1`,
+      [tontineId]
+    );
+
+    // ✅ Normalisation pour correspondre au frontend
+    const tontine = {
+      id: t.id,
+      nom: t.nom,
+      type: t.type,
+      montant: t.montant_cotisation,
+      frequenceCotisation: t.frequence_cotisation,
+      jourCotisation: t.jour_cotisation,
+      frequenceTirage: t.frequence_tirage,
+      nombreMembresMax: t.nombre_membres,
+      description: t.description,
+      statut: t.statut || "active",
+      creeLe: t.cree_le,
+
       membres,
       cotisations,
-    });
+      tirages,
+      gagnants
+    };
+
+    res.json(tontine);
   } catch (err) {
     console.error("Erreur fetch tontine complète:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /* -----------------------
    📌 POST créer une tontine
