@@ -92,14 +92,14 @@ router.post("/generer", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { estResolue = true } = req.body; // par défaut on la marque résolue
+    const { estresolue = true } = req.body; // ⚠ doit matcher le champ DB
 
     const { rows } = await pool.query(
       `UPDATE public.alertes
-       SET "estResolue"=$1
+       SET estresolue=$1
        WHERE id=$2 AND "utilisateurId"=$3
        RETURNING *`,
-      [estResolue, id, req.user.id]
+      [estresolue, id, req.user.id]
     );
 
     if (rows.length === 0) {
