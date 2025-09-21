@@ -10,15 +10,18 @@ router.use(requireAuth);
 -------------------------------- */
 router.get("/", async (req, res) => {
   try {
+    console.log("🔍 GET /alertes utilisateur:", req.user?.id);
+
     const { rows } = await pool.query(
       `SELECT * FROM alertes 
-       WHERE "utilisateurId"=$1 
-       ORDER BY "dateCreation" DESC`,
+       WHERE utilisateurid=$1 
+       ORDER BY datecreation DESC`,
       [req.user.id]
     );
+
     res.json(rows);
   } catch (err) {
-    console.error("❌ Erreur récupération alertes:", err);
+    console.error("❌ Erreur récupération alertes:", err.message);
     res.status(500).json({ error: "Erreur récupération alertes" });
   }
 });
@@ -49,13 +52,13 @@ router.post("/generer", async (req, res) => {
         [tontine.id]
       );
 
-      // 1. Retards cotisations
+      // 1️⃣ Retards cotisations
       for (const m of membres) {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
           nouvellesAlertes.push({
-            utilisateurId: req.user.id,
-            tontineId: tontine.id,
+            utilisateurid: req.user.id,
+            tontineid: tontine.id,
             type: "retard",
             message: `${m.nom} est en retard dans "${tontine.nom}"`,
             urgence: "moyenne"
@@ -63,35 +66,35 @@ router.post("/generer", async (req, res) => {
         }
       }
 
-      // 2. Tirage disponible
+      // 2️⃣ Tirage disponible
       if (paiements.length >= membres.length && tirages.length < membres.length) {
         nouvellesAlertes.push({
-          utilisateurId: req.user.id,
-          tontineId: tontine.id,
+          utilisateurid: req.user.id,
+          tontineid: tontine.id,
           type: "tirage",
           message: `🎲 Tirage disponible pour "${tontine.nom}"`,
           urgence: "haute"
         });
       }
 
-      // 3. Cycle en retard
+      // 3️⃣ Cycle en retard
       if (paiements.length >= membres.length && tirages.length === 0) {
         nouvellesAlertes.push({
-          utilisateurId: req.user.id,
-          tontineId: tontine.id,
+          utilisateurid: req.user.id,
+          tontineid: tontine.id,
           type: "cycle_retard",
           message: `⏳ Cycle en retard pour "${tontine.nom}" (tirage manquant)`,
           urgence: "moyenne"
         });
       }
 
-      // 4. Paiements en attente
+      // 4️⃣ Paiements en attente
       for (const m of membres) {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
           nouvellesAlertes.push({
-            utilisateurId: req.user.id,
-            tontineId: tontine.id,
+            utilisateurid: req.user.id,
+            tontineid: tontine.id,
             type: "paiement_attente",
             message: `💳 Paiement attendu de ${m.nom} dans "${tontine.nom}"`,
             urgence: "basse"
@@ -100,18 +103,18 @@ router.post("/generer", async (req, res) => {
       }
     }
 
-    // 🔹 Insertion sans ON CONFLICT (plus safe si tu n’as pas encore ajouté la contrainte unique)
+    // 🔹 Insertion sans doublons
     const inserted = [];
     for (const alerte of nouvellesAlertes) {
       try {
         const { rows } = await pool.query(
-          `INSERT INTO alertes ("utilisateurId","tontineId",type,message,urgence)
+          `INSERT INTO alertes (utilisateurid, tontineid, type, message, urgence)
            VALUES ($1,$2,$3,$4,$5)
            ON CONFLICT DO NOTHING
            RETURNING *`,
           [
-            alerte.utilisateurId,
-            alerte.tontineId,
+            alerte.utilisateurid,
+            alerte.tontineid,
             alerte.type,
             alerte.message,
             alerte.urgence
@@ -125,7 +128,7 @@ router.post("/generer", async (req, res) => {
 
     res.json({ success: true, inserted });
   } catch (err) {
-    console.error("❌ Erreur génération alertes:", err);
+    console.error("❌ Erreur génération alertes:", err.message);
     res.status(500).json({ error: "Erreur génération alertes" });
   }
 });
@@ -139,7 +142,7 @@ router.delete("/:id", async (req, res) => {
 
     const { rowCount } = await pool.query(
       `DELETE FROM alertes 
-       WHERE id=$1 AND "utilisateurId"=$2`,
+       WHERE id=$1 AND utilisateurid=$2`,
       [id, req.user.id]
     );
 
@@ -149,7 +152,7 @@ router.delete("/:id", async (req, res) => {
 
     res.json({ success: true, message: `Alerte ${id} supprimée ✅` });
   } catch (err) {
-    console.error("❌ Erreur suppression alerte:", err);
+    console.error("❌ Erreur suppression alerte:", err.message);
     res.status(500).json({ error: "Erreur suppression alerte" });
   }
 });
