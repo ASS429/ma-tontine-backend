@@ -10,7 +10,8 @@ const router = express.Router();
 router.get("/", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT *
+      `SELECT id, nom, type, montant_cotisation, frequence_cotisation, jour_cotisation,
+              frequence_tirage, nombre_membres, description, statut, cree_le
        FROM tontines
        WHERE createur=$1
        ORDER BY cree_le DESC`,
@@ -33,7 +34,10 @@ router.get("/:id", requireAuth, async (req, res) => {
   try {
     // Vérifier appartenance
     const { rows: tontineRows } = await pool.query(
-      `SELECT * FROM tontines WHERE id=$1 AND createur=$2`,
+      `SELECT id, nom, type, montant_cotisation, frequence_cotisation, jour_cotisation,
+              frequence_tirage, nombre_membres, description, statut, cree_le
+       FROM tontines
+       WHERE id=$1 AND createur=$2`,
       [tontineId, req.user.id]
     );
 
@@ -85,6 +89,7 @@ router.post("/", requireAuth, async (req, res) => {
     frequence_tirage,
     nombre_membres,
     description,
+    statut // 🔹 facultatif, sinon "active" par défaut
   } = req.body;
 
   if (!nom || !type || !montant_cotisation) {
@@ -96,9 +101,9 @@ router.post("/", requireAuth, async (req, res) => {
       `INSERT INTO tontines (
          nom, type, montant_cotisation, frequence_cotisation,
          jour_cotisation, frequence_tirage, nombre_membres,
-         description, createur
+         description, statut, createur
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,'active'),$10)
        RETURNING *`,
       [
         nom,
@@ -109,7 +114,8 @@ router.post("/", requireAuth, async (req, res) => {
         frequence_tirage,
         nombre_membres,
         description || null,
-        req.user.id, // 🔹 on attache au user connecté
+        statut || null, // si non fourni → "active"
+        req.user.id
       ]
     );
 
@@ -157,6 +163,7 @@ router.put("/:id", requireAuth, async (req, res) => {
     frequence_tirage,
     nombre_membres,
     description,
+    statut // 🔹 important pour garder le statut à jour
   } = req.body;
 
   try {
@@ -164,8 +171,8 @@ router.put("/:id", requireAuth, async (req, res) => {
       `UPDATE tontines
        SET nom=$1, type=$2, montant_cotisation=$3, frequence_cotisation=$4,
            jour_cotisation=$5, frequence_tirage=$6, nombre_membres=$7,
-           description=$8
-       WHERE id=$9 AND createur=$10
+           description=$8, statut=COALESCE($9,statut)
+       WHERE id=$10 AND createur=$11
        RETURNING *`,
       [
         nom,
@@ -176,6 +183,7 @@ router.put("/:id", requireAuth, async (req, res) => {
         frequence_tirage,
         nombre_membres,
         description || null,
+        statut || null,
         tontineId,
         req.user.id
       ]
