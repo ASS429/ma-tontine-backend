@@ -87,6 +87,33 @@ router.post("/generer", async (req, res) => {
 });
 
 /* -------------------------------
+   📌 PUT marquer une alerte comme résolue
+-------------------------------- */
+router.put("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estResolue = true } = req.body; // par défaut on la marque résolue
+
+    const { rows } = await pool.query(
+      `UPDATE public.alertes
+       SET "estResolue"=$1
+       WHERE id=$2 AND "utilisateurId"=$3
+       RETURNING *`,
+      [estResolue, id, req.user.id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Alerte introuvable ou non autorisée" });
+    }
+
+    res.json({ success: true, alerte: rows[0] });
+  } catch (err) {
+    console.error("❌ Erreur update alerte:", err.message);
+    res.status(500).json({ error: "Erreur mise à jour alerte" });
+  }
+});
+
+/* -------------------------------
    📌 DELETE ignorer une alerte
 -------------------------------- */
 router.delete("/:id", async (req, res) => {
