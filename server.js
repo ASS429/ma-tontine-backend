@@ -9,6 +9,7 @@ import utilisateursRoutes from "./routes/utilisateurs.js";
 import authRoutes from "./routes/auth.js";
 import tiragesRoutes from "./routes/tirages.js";
 import statsRoutes from "./routes/stats.js";
+import alertesRoutes from "./routes/alertes.js";
 
 dotenv.config();
 const app = express();
@@ -35,6 +36,7 @@ app.use("/api/utilisateurs", utilisateursRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tirages", tiragesRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api/alertes", alertesRoutes);
 
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
