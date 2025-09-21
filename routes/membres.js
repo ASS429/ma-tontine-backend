@@ -5,13 +5,13 @@ import pool from "../db.js";
 const router = express.Router();
 
 /* -----------------------
-   📌 GET membres d’une tontine
+   📌 GET membres + cotisations d’une tontine
 ------------------------ */
-router.get("/:tontineId", requireAuth, async (req, res) => {
+router.get("/:tontineId/avec-cotisations", requireAuth, async (req, res) => {
   const { tontineId } = req.params;
 
   try {
-    // Vérifier que la tontine appartient à l'utilisateur
+    // Vérif autorisation
     const { rows: tontine } = await pool.query(
       "SELECT id FROM tontines WHERE id=$1 AND createur=$2",
       [tontineId, req.user.id]
@@ -20,18 +20,46 @@ router.get("/:tontineId", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Non autorisé" });
     }
 
-    // Récupérer les membres
+    // Récupérer membres + cotisations
     const { rows } = await pool.query(
-      "SELECT * FROM membres WHERE tontine_id=$1 ORDER BY cree_le ASC",
+      `SELECT m.id as membre_id, m.nom, m.telephone, m.adresse, m.cree_le,
+              c.id as cotisation_id, c.montant, c.date_cotisation
+       FROM membres m
+       LEFT JOIN cotisations c ON c.membre_id = m.id
+       WHERE m.tontine_id=$1
+       ORDER BY m.cree_le ASC`,
       [tontineId]
     );
 
-    res.json(rows);
+    // Normalisation côté backend
+    const membresMap = {};
+    rows.forEach(r => {
+      if (!membresMap[r.membre_id]) {
+        membresMap[r.membre_id] = {
+          id: r.membre_id,
+          nom: r.nom,
+          telephone: r.telephone,
+          adresse: r.adresse,
+          dateAjout: r.cree_le,
+          cotisationsPayees: []
+        };
+      }
+      if (r.cotisation_id) {
+        membresMap[r.membre_id].cotisationsPayees.push({
+          id: r.cotisation_id,
+          montant: Number(r.montant),
+          date: r.date_cotisation
+        });
+      }
+    });
+
+    res.json(Object.values(membresMap));
   } catch (err) {
-    console.error("Erreur fetch membres:", err.message);
+    console.error("Erreur fetch membres + cotisations:", err.message);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
+
 
 /* -----------------------
    📌 POST ajouter un membre
