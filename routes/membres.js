@@ -37,15 +37,13 @@ router.get("/:tontineId", requireAuth, async (req, res) => {
    📌 POST ajouter un membre
 ------------------------ */
 router.post("/", requireAuth, async (req, res) => {
-  const { tontineId, nom } = req.body;
+  const { tontineId, nom, telephone, adresse } = req.body;
 
-  // Validation
   if (!tontineId || !nom) {
     return res.status(400).json({ error: "Champs manquants (tontineId, nom)" });
   }
 
   try {
-    // Vérifier que la tontine appartient à l'utilisateur connecté
     const { rows: tontine } = await pool.query(
       "SELECT id FROM tontines WHERE id=$1 AND createur=$2",
       [tontineId, req.user.id]
@@ -54,12 +52,11 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Non autorisé" });
     }
 
-    // Insérer le nouveau membre
     const { rows } = await pool.query(
-      `INSERT INTO membres (tontine_id, nom) 
-       VALUES ($1, $2) 
+      `INSERT INTO membres (tontine_id, nom, telephone, adresse) 
+       VALUES ($1, $2, $3, $4) 
        RETURNING *`,
-      [tontineId, nom]
+      [tontineId, nom, telephone || null, adresse || null]
     );
 
     res.status(201).json(rows[0]);
@@ -104,14 +101,13 @@ router.delete("/:id", requireAuth, async (req, res) => {
 ------------------------ */
 router.put("/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
-  const { nom, dateAjout } = req.body;
+  const { nom, telephone, adresse, dateAjout } = req.body;
 
   if (!nom) {
     return res.status(400).json({ error: "Le nom est obligatoire" });
   }
 
   try {
-    // Vérifier que le membre appartient à une tontine du user
     const { rows: membre } = await pool.query(
       `SELECT m.id
        FROM membres m
@@ -124,13 +120,12 @@ router.put("/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Non autorisé" });
     }
 
-    // Mise à jour
     const { rows } = await pool.query(
       `UPDATE membres 
-       SET nom=$1, cree_le=$2
-       WHERE id=$3 
+       SET nom=$1, telephone=$2, adresse=$3, cree_le=$4
+       WHERE id=$5 
        RETURNING *`,
-      [nom, dateAjout || new Date().toISOString(), id]
+      [nom, telephone || null, adresse || null, dateAjout || new Date().toISOString(), id]
     );
 
     res.json(rows[0]);
