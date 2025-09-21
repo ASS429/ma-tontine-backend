@@ -11,7 +11,7 @@ router.get("/:tontineId/avec-cotisations", requireAuth, async (req, res) => {
   const { tontineId } = req.params;
 
   try {
-    // Vérif autorisation
+    // Vérifier que la tontine appartient à l’utilisateur
     const { rows: tontine } = await pool.query(
       "SELECT id FROM tontines WHERE id=$1 AND createur=$2",
       [tontineId, req.user.id]
@@ -22,18 +22,18 @@ router.get("/:tontineId/avec-cotisations", requireAuth, async (req, res) => {
 
     // Récupérer membres + cotisations
     const { rows } = await pool.query(
-      `SELECT m.id as membre_id, m.nom, m.telephone, m.adresse, m.cree_le,
-              c.id as cotisation_id, c.montant, c.date_cotisation
+      `SELECT m.id AS membre_id, m.nom, m.telephone, m.adresse, m.cree_le,
+              c.id AS cotisation_id, c.montant, c.date_cotisation
        FROM membres m
        LEFT JOIN cotisations c ON c.membre_id = m.id
        WHERE m.tontine_id=$1
-       ORDER BY m.cree_le ASC`,
+       ORDER BY m.cree_le ASC, c.date_cotisation ASC`,
       [tontineId]
     );
 
-    // Normalisation côté backend
+    // Normaliser les résultats côté backend
     const membresMap = {};
-    rows.forEach(r => {
+    for (const r of rows) {
       if (!membresMap[r.membre_id]) {
         membresMap[r.membre_id] = {
           id: r.membre_id,
@@ -51,11 +51,11 @@ router.get("/:tontineId/avec-cotisations", requireAuth, async (req, res) => {
           date: r.date_cotisation
         });
       }
-    });
+    }
 
     res.json(Object.values(membresMap));
   } catch (err) {
-    console.error("Erreur fetch membres + cotisations:", err.message);
+    console.error("❌ Erreur fetch membres + cotisations:", err.message);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
@@ -67,11 +67,12 @@ router.get("/:tontineId/avec-cotisations", requireAuth, async (req, res) => {
 router.post("/", requireAuth, async (req, res) => {
   const { tontineId, nom, telephone, adresse } = req.body;
 
-  if (!tontineId || !nom) {
-    return res.status(400).json({ error: "Champs manquants (tontineId, nom)" });
+  if (!tontineId || !nom || !telephone || !adresse) {
+    return res.status(400).json({ error: "Champs manquants (tontineId, nom, téléphone, adresse)" });
   }
 
   try {
+    // Vérifier que la tontine existe et appartient à l'utilisateur
     const { rows: tontine } = await pool.query(
       "SELECT id FROM tontines WHERE id=$1 AND createur=$2",
       [tontineId, req.user.id]
@@ -80,19 +81,21 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Non autorisé" });
     }
 
+    // Insertion du membre
     const { rows } = await pool.query(
-      `INSERT INTO membres (tontine_id, nom, telephone, adresse) 
-       VALUES ($1, $2, $3, $4) 
-       RETURNING *`,
-      [tontineId, nom, telephone || null, adresse || null]
+      `INSERT INTO membres (tontine_id, nom, telephone, adresse, cree_le) 
+       VALUES ($1, $2, $3, $4, NOW()) 
+       RETURNING id, nom, telephone, adresse, cree_le`,
+      [tontineId, nom, telephone, adresse]
     );
 
     res.status(201).json(rows[0]);
   } catch (err) {
-    console.error("Erreur ajout membre:", err.message);
+    console.error("❌ Erreur ajout membre:", err.message);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
+
 
 /* -----------------------
    📌 DELETE supprimer un membre
