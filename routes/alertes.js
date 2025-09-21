@@ -15,7 +15,7 @@ router.get("/", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT * FROM public.alertes 
        WHERE "utilisateurId"=$1 
-       ORDER BY "dateCreation" DESC`,
+       ORDER BY datecreation DESC`,
       [req.user.id]
     );
 
