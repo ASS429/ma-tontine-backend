@@ -34,7 +34,7 @@ router.get("/", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-      statut: t.statut_calcule, // ✅ calculé
+      statut: t.statut_calcule,
       creeLe: t.cree_le,
       membres: [],
       cotisations: [],
@@ -169,6 +169,9 @@ router.post("/", requireAuth, async (req, res) => {
 
     const t = rows[0];
 
+    // ✅ recalcul immédiat du statut
+    const statut_calcule = "active"; // à la création, toujours active
+
     res.status(201).json({
       id: t.id,
       nom: t.nom,
@@ -179,7 +182,7 @@ router.post("/", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-      statut: t.statut || "active",
+      statut: statut_calcule,
       creeLe: t.cree_le,
       membres: [],
       cotisations: [],
@@ -238,6 +241,14 @@ router.put("/:id", requireAuth, async (req, res) => {
 
     const t = rows[0];
 
+    // ✅ recalcul auto
+    const { rows: tiragesCount } = await pool.query(
+      `SELECT COUNT(*)::int AS nb FROM tirages WHERE tontine_id = $1`,
+      [t.id]
+    );
+
+    const statut_calcule = tiragesCount[0].nb >= t.nombre_membres ? "terminee" : t.statut;
+
     res.json({
       id: t.id,
       nom: t.nom,
@@ -248,12 +259,12 @@ router.put("/:id", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-      statut: t.statut || "active",
+      statut: statut_calcule,
       creeLe: t.cree_le,
-      membres: [],       // ✅ toujours présents
-      cotisations: [],   // ✅
-      tirages: [],       // ✅
-      gagnants: []       // ✅
+      membres: [],
+      cotisations: [],
+      tirages: [],
+      gagnants: []
     });
   } catch (err) {
     console.error("Erreur modification tontine:", err.message);
