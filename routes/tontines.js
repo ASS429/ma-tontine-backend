@@ -10,10 +10,17 @@ const router = express.Router();
 router.get("/", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT *
-       FROM tontines
-       WHERE createur=$1
-       ORDER BY cree_le DESC`,
+      `
+      SELECT t.*,
+             CASE 
+               WHEN (SELECT COUNT(*) FROM tirages WHERE tontine_id = t.id) >= t.nombre_membres
+               THEN 'terminee'
+               ELSE t.statut
+             END AS statut_calcule
+      FROM tontines t
+      WHERE t.createur=$1
+      ORDER BY t.cree_le DESC
+      `,
       [req.user.id]
     );
 
@@ -27,7 +34,7 @@ router.get("/", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-      statut: t.statut || "active",
+      statut: t.statut_calcule, // ✅ calculé
       creeLe: t.cree_le,
       membres: [],
       cotisations: [],
@@ -42,6 +49,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
+
 /* -----------------------
    📌 GET une tontine avec détails (membres + cotisations + tirages)
 ------------------------ */
@@ -50,7 +58,16 @@ router.get("/:id", requireAuth, async (req, res) => {
 
   try {
     const { rows: tontineRows } = await pool.query(
-      `SELECT * FROM tontines WHERE id=$1 AND createur=$2`,
+      `
+      SELECT t.*,
+             CASE 
+               WHEN (SELECT COUNT(*) FROM tirages WHERE tontine_id = t.id) >= t.nombre_membres
+               THEN 'terminee'
+               ELSE t.statut
+             END AS statut_calcule
+      FROM tontines t
+      WHERE t.id=$1 AND t.createur=$2
+      `,
       [tontineId, req.user.id]
     );
 
@@ -97,12 +114,11 @@ router.get("/:id", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-      statut: t.statut || "active",
+      statut: t.statut_calcule, // ✅ statut calculé auto
       creeLe: t.cree_le,
       membres,
       cotisations,
-      tirages,
-      gagnants: tirages // tu peux filtrer ici si besoin
+      tirages
     });
   } catch (err) {
     console.error("Erreur fetch tontine complète:", err.message);
