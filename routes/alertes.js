@@ -28,7 +28,6 @@ router.get("/", async (req, res) => {
 -------------------------------- */
 router.post("/generer", async (req, res) => {
   try {
-    // 🔹 Récupérer toutes les tontines de l’utilisateur
     const { rows: tontines } = await pool.query(
       `SELECT * FROM tontines WHERE createur=$1`,
       [req.user.id]
@@ -37,27 +36,20 @@ router.post("/generer", async (req, res) => {
     let nouvellesAlertes = [];
 
     for (const tontine of tontines) {
-      // Membres
       const { rows: membres } = await pool.query(
         `SELECT * FROM membres WHERE tontine_id=$1`,
         [tontine.id]
       );
-
-      // Cotisations
       const { rows: paiements } = await pool.query(
         `SELECT * FROM cotisations WHERE tontine_id=$1`,
         [tontine.id]
       );
-
-      // Tirages
       const { rows: tirages } = await pool.query(
         `SELECT * FROM tirages WHERE tontine_id=$1 ORDER BY date_tirage ASC`,
         [tontine.id]
       );
 
-      /* -------------------------
-         1. Retards cotisations
-      ------------------------- */
+      // 1. Retards cotisations
       for (const m of membres) {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
@@ -71,9 +63,7 @@ router.post("/generer", async (req, res) => {
         }
       }
 
-      /* -------------------------
-         2. Tirage disponible
-      ------------------------- */
+      // 2. Tirage disponible
       if (paiements.length >= membres.length && tirages.length < membres.length) {
         nouvellesAlertes.push({
           utilisateurId: req.user.id,
@@ -84,9 +74,7 @@ router.post("/generer", async (req, res) => {
         });
       }
 
-      /* -------------------------
-         3. Cycle en retard
-      ------------------------- */
+      // 3. Cycle en retard
       if (paiements.length >= membres.length && tirages.length === 0) {
         nouvellesAlertes.push({
           utilisateurId: req.user.id,
@@ -97,9 +85,7 @@ router.post("/generer", async (req, res) => {
         });
       }
 
-      /* -------------------------
-         4. Paiements en attente
-      ------------------------- */
+      // 4. Paiements en attente
       for (const m of membres) {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
@@ -114,26 +100,27 @@ router.post("/generer", async (req, res) => {
       }
     }
 
-    /* -------------------------
-       🔹 Insérer en DB (sans doublons)
-    ------------------------- */
+    // 🔹 Insertion sans ON CONFLICT (plus safe si tu n’as pas encore ajouté la contrainte unique)
     const inserted = [];
     for (const alerte of nouvellesAlertes) {
-      const { rows } = await pool.query(
-        `INSERT INTO alertes ("utilisateurId","tontineId",type,message,urgence)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT ("utilisateurId","tontineId",type,message)
-         DO NOTHING
-         RETURNING *`,
-        [
-          alerte.utilisateurId,
-          alerte.tontineId,
-          alerte.type,
-          alerte.message,
-          alerte.urgence
-        ]
-      );
-      if (rows.length > 0) inserted.push(rows[0]);
+      try {
+        const { rows } = await pool.query(
+          `INSERT INTO alertes ("utilisateurId","tontineId",type,message,urgence)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT DO NOTHING
+           RETURNING *`,
+          [
+            alerte.utilisateurId,
+            alerte.tontineId,
+            alerte.type,
+            alerte.message,
+            alerte.urgence
+          ]
+        );
+        if (rows.length > 0) inserted.push(rows[0]);
+      } catch (e) {
+        console.error("⚠️ Erreur insertion alerte:", e.message);
+      }
     }
 
     res.json({ success: true, inserted });
