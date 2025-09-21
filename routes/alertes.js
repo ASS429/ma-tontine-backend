@@ -6,7 +6,9 @@ import { query } from "../db.js";
 const router = express.Router();
 router.use(authenticate);
 
-// 📌 Récupérer (et générer si besoin) les alertes pour l’utilisateur
+/* =============================
+   📌 GET - Récupérer les alertes
+   ============================= */
 router.get("/", async (req, res) => {
   try {
     // Récupérer les tontines actives de l’utilisateur
@@ -43,30 +45,28 @@ router.get("/", async (req, res) => {
       );
       const tirages = tiragesRes.rows;
 
-      // 🔔 Générer les alertes dynamiques
-
-      // Retards de cotisation
+      // 🔔 Retards cotisations
       membres.forEach(m => {
         const aCotise = cotisations.some(c => c.membre_id === m.id);
         if (!aCotise) {
           nouvellesAlertes.push({
-            type: "retard",
+            utilisateurId: req.user.id,
             tontineId: tontine.id,
+            type: "retard",
             message: `${m.nom} est en retard dans "${tontine.nom}"`,
-            urgence: "moyenne",
-            utilisateurId: req.user.id
+            urgence: "moyenne"
           });
         }
       });
 
-      // Tirage dispo
+      // 🎲 Tirage disponible
       if (cotisations.length >= membres.length && tirages.length < membres.length) {
         nouvellesAlertes.push({
-          type: "tirage",
+          utilisateurId: req.user.id,
           tontineId: tontine.id,
+          type: "tirage",
           message: `🎲 Tirage disponible pour "${tontine.nom}"`,
-          urgence: "haute",
-          utilisateurId: req.user.id
+          urgence: "haute"
         });
       }
     }
@@ -75,12 +75,13 @@ router.get("/", async (req, res) => {
     for (const alerte of nouvellesAlertes) {
       await query(
         `INSERT INTO alertes (utilisateurId, tontineId, type, message, urgence)
-         VALUES ($1, $2, $3, $4, $5)`,
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT DO NOTHING`,
         [alerte.utilisateurId, alerte.tontineId, alerte.type, alerte.message, alerte.urgence]
       );
     }
 
-    // 🔄 Retourner toutes les alertes en base
+    // 🔄 Retourner toutes les alertes
     const { rows: alertesFinales } = await query(
       `SELECT * FROM alertes WHERE utilisateurId=$1 ORDER BY dateCreation DESC`,
       [req.user.id]
@@ -93,7 +94,9 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 📌 Supprimer une alerte
+/* =============================
+   📌 DELETE - Supprimer une alerte
+   ============================= */
 router.delete("/:id", async (req, res) => {
   try {
     await query(
