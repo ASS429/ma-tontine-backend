@@ -6,67 +6,81 @@ const router = express.Router();
 router.use(requireAuth);
 
 /* -------------------------------
-   📌 GET toutes les alertes dynamiques
+   📌 GET toutes les alertes d’un utilisateur
 -------------------------------- */
 router.get("/", async (req, res) => {
   try {
-    // Récupérer toutes les tontines de l’utilisateur
+    const { rows } = await pool.query(
+      `SELECT * FROM alertes 
+       WHERE "utilisateurId"=$1 
+       ORDER BY "dateCreation" DESC`,
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Erreur récupération alertes:", err);
+    res.status(500).json({ error: "Erreur récupération alertes" });
+  }
+});
+
+/* -------------------------------
+   📌 POST générer automatiquement des alertes dynamiques
+-------------------------------- */
+router.post("/generer", async (req, res) => {
+  try {
+    // 🔹 Récupérer toutes les tontines de l’utilisateur
     const { rows: tontines } = await pool.query(
-      `SELECT *
-       FROM tontines
-       WHERE createur = $1`,
+      `SELECT * FROM tontines WHERE createur=$1`,
       [req.user.id]
     );
 
-    let alertes = [];
+    let nouvellesAlertes = [];
 
     for (const tontine of tontines) {
       // Membres
       const { rows: membres } = await pool.query(
-        `SELECT * FROM membres WHERE tontine_id = $1`,
+        `SELECT * FROM membres WHERE tontine_id=$1`,
         [tontine.id]
       );
 
       // Cotisations
       const { rows: paiements } = await pool.query(
-        `SELECT * FROM cotisations WHERE tontine_id = $1`,
+        `SELECT * FROM cotisations WHERE tontine_id=$1`,
         [tontine.id]
       );
 
       // Tirages
       const { rows: tirages } = await pool.query(
-        `SELECT * FROM tirages WHERE tontine_id = $1 ORDER BY date_tirage ASC`,
+        `SELECT * FROM tirages WHERE tontine_id=$1 ORDER BY date_tirage ASC`,
         [tontine.id]
       );
 
       /* -------------------------
          1. Retards cotisations
       ------------------------- */
-      membres.forEach(m => {
+      for (const m of membres) {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
-          alertes.push({
-            id: `${tontine.id}-${m.id}-retard`,
+          nouvellesAlertes.push({
+            utilisateurId: req.user.id,
             tontineId: tontine.id,
             type: "retard",
             message: `${m.nom} est en retard dans "${tontine.nom}"`,
-            urgence: "moyenne",
-            dateCreation: new Date()
+            urgence: "moyenne"
           });
         }
-      });
+      }
 
       /* -------------------------
          2. Tirage disponible
       ------------------------- */
       if (paiements.length >= membres.length && tirages.length < membres.length) {
-        alertes.push({
-          id: `${tontine.id}-tirage`,
+        nouvellesAlertes.push({
+          utilisateurId: req.user.id,
           tontineId: tontine.id,
           type: "tirage",
           message: `🎲 Tirage disponible pour "${tontine.nom}"`,
-          urgence: "haute",
-          dateCreation: new Date()
+          urgence: "haute"
         });
       }
 
@@ -74,52 +88,79 @@ router.get("/", async (req, res) => {
          3. Cycle en retard
       ------------------------- */
       if (paiements.length >= membres.length && tirages.length === 0) {
-        alertes.push({
-          id: `${tontine.id}-cycle-retard`,
+        nouvellesAlertes.push({
+          utilisateurId: req.user.id,
           tontineId: tontine.id,
           type: "cycle_retard",
           message: `⏳ Cycle en retard pour "${tontine.nom}" (tirage manquant)`,
-          urgence: "moyenne",
-          dateCreation: new Date()
+          urgence: "moyenne"
         });
       }
 
       /* -------------------------
          4. Paiements en attente
       ------------------------- */
-      membres.forEach(m => {
+      for (const m of membres) {
         const aCotise = paiements.some(p => p.membre_id === m.id);
         if (!aCotise) {
-          alertes.push({
-            id: `${tontine.id}-${m.id}-paiement-attente`,
+          nouvellesAlertes.push({
+            utilisateurId: req.user.id,
             tontineId: tontine.id,
             type: "paiement_attente",
             message: `💳 Paiement attendu de ${m.nom} dans "${tontine.nom}"`,
-            urgence: "basse",
-            dateCreation: new Date()
+            urgence: "basse"
           });
         }
-      });
+      }
     }
 
-    // 🔹 Retourner les alertes générées dynamiquement
-    res.json(alertes);
+    /* -------------------------
+       🔹 Insérer en DB (sans doublons)
+    ------------------------- */
+    const inserted = [];
+    for (const alerte of nouvellesAlertes) {
+      const { rows } = await pool.query(
+        `INSERT INTO alertes ("utilisateurId","tontineId",type,message,urgence)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT ("utilisateurId","tontineId",type,message)
+         DO NOTHING
+         RETURNING *`,
+        [
+          alerte.utilisateurId,
+          alerte.tontineId,
+          alerte.type,
+          alerte.message,
+          alerte.urgence
+        ]
+      );
+      if (rows.length > 0) inserted.push(rows[0]);
+    }
+
+    res.json({ success: true, inserted });
   } catch (err) {
-    console.error("❌ Erreur récupération alertes dynamiques:", err);
-    res.status(500).json({ error: "Erreur récupération alertes dynamiques" });
+    console.error("❌ Erreur génération alertes:", err);
+    res.status(500).json({ error: "Erreur génération alertes" });
   }
 });
 
 /* -------------------------------
-   📌 DELETE ignorer une alerte (simulation côté serveur)
+   📌 DELETE ignorer une alerte
 -------------------------------- */
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Comme les alertes sont générées dynamiquement, on ne les supprime pas en DB.
-    // On fait juste renvoyer un succès pour que le frontend retire l’alerte.
-    res.json({ success: true, message: `Alerte ${id} ignorée côté serveur ✅` });
+    const { rowCount } = await pool.query(
+      `DELETE FROM alertes 
+       WHERE id=$1 AND "utilisateurId"=$2`,
+      [id, req.user.id]
+    );
+
+    if (rowCount === 0) {
+      return res.status(404).json({ error: "Alerte introuvable ou non autorisée" });
+    }
+
+    res.json({ success: true, message: `Alerte ${id} supprimée ✅` });
   } catch (err) {
     console.error("❌ Erreur suppression alerte:", err);
     res.status(500).json({ error: "Erreur suppression alerte" });
