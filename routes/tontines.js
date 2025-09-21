@@ -49,9 +49,8 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
-
 /* -----------------------
-   📌 GET une tontine avec détails (membres + cotisations + tirages)
+   📌 GET une tontine avec détails
 ------------------------ */
 router.get("/:id", requireAuth, async (req, res) => {
   const tontineId = req.params.id;
@@ -114,11 +113,12 @@ router.get("/:id", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-      statut: t.statut_calcule, // ✅ statut calculé auto
+      statut: t.statut_calcule, // ✅ calcul auto
       creeLe: t.cree_le,
       membres,
       cotisations,
-      tirages
+      tirages,
+      gagnants: tirages
     });
   } catch (err) {
     console.error("Erreur fetch tontine complète:", err.message);
@@ -249,7 +249,11 @@ router.put("/:id", requireAuth, async (req, res) => {
       nombreMembresMax: t.nombre_membres,
       description: t.description,
       statut: t.statut || "active",
-      creeLe: t.cree_le
+      creeLe: t.cree_le,
+      membres: [],       // ✅ toujours présents
+      cotisations: [],   // ✅
+      tirages: [],       // ✅
+      gagnants: []       // ✅
     });
   } catch (err) {
     console.error("Erreur modification tontine:", err.message);
