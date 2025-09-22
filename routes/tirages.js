@@ -1,9 +1,9 @@
 // routes/tirages.js
-const express = require("express");
-const router = express.Router();
-const db = require("../db");
-const verifyToken = require("../middleware/auth");
+import express from "express";
+import db from "../db.js";
+import verifyToken from "../middleware/auth.js";
 
+const router = express.Router();
 
 // ➤ Créer un tirage pour une tontine
 router.post("/:tontineId", verifyToken, async (req, res) => {
@@ -67,7 +67,6 @@ router.post("/:tontineId", verifyToken, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur lors du tirage" });
   }
 });
-
 
 // ➤ Récupérer l’historique des tirages d’une tontine (avec montant et cycle)
 router.get("/:tontineId", verifyToken, async (req, res) => {
