@@ -1,110 +1,109 @@
 // routes/tirages.js
 const express = require("express");
 const router = express.Router();
-const pool = require("../db");
-const requireAuth = require("../middleware/auth");
+const db = require("../db");
+const verifyToken = require("../middleware/auth");
 
-/* -----------------------
-   📌 GET historique des tirages d’une tontine
------------------------- */
-router.get("/:tontineId", requireAuth, async (req, res) => {
+
+// ➤ Créer un tirage pour une tontine
+router.post("/:tontineId", verifyToken, async (req, res) => {
+  const { tontineId } = req.params;
+  const { membre_id } = req.body;
+
+  try {
+    // 🔹 Vérifier que la tontine appartient à l'utilisateur connecté
+    const tontine = await db.query(
+      "SELECT * FROM tontines WHERE id = $1 AND createur = $2",
+      [tontineId, req.user.id]
+    );
+
+    if (tontine.rows.length === 0) {
+      return res.status(403).json({ error: "⛔ Accès refusé à cette tontine" });
+    }
+
+    // 🔹 Récupérer le cycle actif
+    const cycleRes = await db.query(
+      "SELECT * FROM cycles WHERE tontine_id = $1 AND cloture = false ORDER BY numero ASC LIMIT 1",
+      [tontineId]
+    );
+
+    if (cycleRes.rows.length === 0) {
+      return res.status(400).json({ error: "⚠️ Aucun cycle actif trouvé" });
+    }
+
+    const cycle = cycleRes.rows[0];
+
+    // 🔹 Vérifier si le membre appartient bien à cette tontine
+    const membre = await db.query(
+      "SELECT * FROM membres WHERE id = $1 AND tontine_id = $2",
+      [membre_id, tontineId]
+    );
+
+    if (membre.rows.length === 0) {
+      return res.status(400).json({ error: "⚠️ Ce membre n'appartient pas à la tontine" });
+    }
+
+    // 🔹 Vérifier que le membre n'a pas déjà été tiré pour ce cycle
+    const dejaTire = await db.query(
+      "SELECT 1 FROM tirages WHERE membre_id = $1 AND cycle_id = $2",
+      [membre_id, cycle.id]
+    );
+
+    if (dejaTire.rows.length > 0) {
+      return res.status(400).json({ error: "⚠️ Ce membre a déjà été tiré pour ce cycle" });
+    }
+
+    // 🔹 Insérer le tirage
+    const newTirage = await db.query(
+      `INSERT INTO tirages (tontine_id, membre_id, cycle_id)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [tontineId, membre_id, cycle.id]
+    );
+
+    res.json(newTirage.rows[0]);
+  } catch (err) {
+    console.error("❌ Erreur création tirage:", err);
+    res.status(500).json({ error: "Erreur serveur lors du tirage" });
+  }
+});
+
+
+// ➤ Récupérer l’historique des tirages d’une tontine (avec montant et cycle)
+router.get("/:tontineId", verifyToken, async (req, res) => {
   const { tontineId } = req.params;
 
   try {
     // Vérifier que la tontine appartient à l’utilisateur
-    const { rows: tontine } = await pool.query(
-      "SELECT id FROM tontines WHERE id=$1 AND createur=$2",
+    const tontine = await db.query(
+      "SELECT * FROM tontines WHERE id = $1 AND createur = $2",
       [tontineId, req.user.id]
     );
-    if (tontine.length === 0) {
-      return res.status(403).json({ error: "Non autorisé" });
+
+    if (tontine.rows.length === 0) {
+      return res.status(403).json({ error: "⛔ Accès refusé à cette tontine" });
     }
 
-    // Récupérer les tirages avec info du membre + montant gagné
-    const { rows } = await pool.query(
-      `SELECT t.id, t.date_tirage, t.montant_gagne,
-              m.nom AS nom_membre, m.id AS membre_id
-       FROM tirages t
-       JOIN membres m ON m.id = t.membre_id
-       WHERE t.tontine_id=$1
-       ORDER BY t.date_tirage ASC`,
+    // Récupérer tous les tirages de la tontine avec nom + montant + cycle
+    const tirages = await db.query(
+      `
+      SELECT t.id, t.date_tirage, m.nom AS nom_membre, 
+             c.numero AS numero_cycle,
+             ton.montant_cotisation * ton.nombre_membres AS montant_gagne
+      FROM tirages t
+      JOIN membres m ON t.membre_id = m.id
+      JOIN cycles c ON t.cycle_id = c.id
+      JOIN tontines ton ON t.tontine_id = ton.id
+      WHERE t.tontine_id = $1
+      ORDER BY c.numero ASC, t.date_tirage ASC
+      `,
       [tontineId]
     );
 
-    res.json(rows);
+    res.json(tirages.rows);
   } catch (err) {
-    console.error("❌ Erreur fetch tirages:", err.message);
-    res.status(500).json({ error: "Erreur serveur interne" });
-  }
-});
-
-/* -----------------------
-   📌 POST effectuer un tirage
------------------------- */
-router.post("/run/:tontineId", requireAuth, async (req, res) => {
-  const { tontineId } = req.params;
-
-  try {
-    // Vérifier que la tontine existe et appartient à l’utilisateur
-    const { rows: tontineRows } = await pool.query(
-      "SELECT * FROM tontines WHERE id=$1 AND createur=$2",
-      [tontineId, req.user.id]
-    );
-    if (tontineRows.length === 0) {
-      return res.status(403).json({ error: "Non autorisé" });
-    }
-    const tontine = tontineRows[0];
-
-    // Récupérer le cycle actif
-    const { rows: cycleRows } = await pool.query(
-      `SELECT * FROM cycles 
-       WHERE tontine_id=$1 AND cloture=false
-       ORDER BY numero ASC LIMIT 1`,
-      [tontineId]
-    );
-    if (cycleRows.length === 0) {
-      return res.status(400).json({ error: "Aucun cycle actif trouvé" });
-    }
-    const cycleActif = cycleRows[0];
-
-    // Récupérer les membres éligibles (jamais gagnés dans ce cycle)
-    const { rows: membresEligibles } = await pool.query(
-      `SELECT m.*
-       FROM membres m
-       WHERE m.tontine_id=$1
-         AND NOT EXISTS (
-           SELECT 1 FROM tirages t
-           WHERE t.membre_id = m.id
-             AND t.cycle_id=$2
-         )`,
-      [tontineId, cycleActif.id]
-    );
-
-    if (membresEligibles.length === 0) {
-      return res.status(400).json({ error: "Tous les membres ont déjà gagné ce cycle" });
-    }
-
-    // Tirage aléatoire
-    const gagnant = membresEligibles[Math.floor(Math.random() * membresEligibles.length)];
-
-    // Calcul du montant gagné (fixé par les règles de la tontine)
-    const montantGagne = tontine.montant_cotisation * tontine.nombre_membres;
-
-    // Enregistrer le tirage
-    const { rows: tirageRows } = await pool.query(
-      `INSERT INTO tirages (tontine_id, membre_id, cycle_id, montant_gagne) 
-       VALUES ($1, $2, $3, $4)
-       RETURNING *`,
-      [tontineId, gagnant.id, cycleActif.id, montantGagne]
-    );
-
-    res.status(201).json({
-      tirage: tirageRows[0],
-      gagnant: { id: gagnant.id, nom: gagnant.nom },
-    });
-  } catch (err) {
-    console.error("❌ Erreur tirage:", err.message);
-    res.status(500).json({ error: "Erreur serveur interne" });
+    console.error("❌ Erreur récupération tirages:", err);
+    res.status(500).json({ error: "Erreur serveur lors de la récupération des tirages" });
   }
 });
 
