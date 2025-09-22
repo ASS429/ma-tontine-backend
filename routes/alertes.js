@@ -13,11 +13,15 @@ router.get("/", async (req, res) => {
   try {
     console.log("🔍 GET /alertes utilisateur:", req.user?.id);
 
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "Utilisateur non authentifié" });
+    }
+
     const { rows } = await pool.query(
       `SELECT * FROM public.alertes 
        WHERE "utilisateurId"=$1 
-         AND "estResolue" = false
-       ORDER BY "dateCreation" DESC`,
+         AND COALESCE(estresolue, false) = false
+       ORDER BY datecreation DESC`,
       [req.user.id]
     );
 
@@ -54,7 +58,7 @@ router.post("/generer", async (req, res) => {
         [tontine.id]
       );
 
-      // ⚡ Ajoute ta logique de génération ici (retards, tirages, etc.)
+      // ⚡ TODO : Ajoute ici la logique métier pour générer des alertes dynamiques
     }
 
     // 🔹 Insertion en DB
@@ -94,11 +98,11 @@ router.post("/generer", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { estResolue = true } = req.body; // ✅ cohérent avec la DB
+    const { estResolue = true } = req.body;
 
     const { rows } = await pool.query(
       `UPDATE public.alertes
-       SET "estResolue"=$1
+       SET estresolue=$1
        WHERE id=$2 AND "utilisateurId"=$3
        RETURNING *`,
       [estResolue, id, req.user.id]
