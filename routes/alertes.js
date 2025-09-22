@@ -1,3 +1,4 @@
+// routes/alertes.js
 import express from "express";
 import { requireAuth } from "../middleware/auth.js";
 import pool from "../db.js";
@@ -10,13 +11,11 @@ router.use(requireAuth);
 -------------------------------- */
 router.get("/", async (req, res) => {
   try {
-    console.log("🔍 GET /alertes utilisateur:", req.user?.id);
-
     const { rows } = await pool.query(
       `SELECT * FROM public.alertes 
        WHERE "utilisateurId"=$1 
-         AND estresolue = false
-       ORDER BY "datecreation" DESC`,
+         AND "estResolue" = false
+       ORDER BY "dateCreation" DESC`,
       [req.user.id]
     );
 
@@ -44,17 +43,39 @@ router.post("/generer", async (req, res) => {
         `SELECT * FROM public.membres WHERE tontine_id=$1`,
         [tontine.id]
       );
-      const { rows: paiements } = await pool.query(
-        `SELECT * FROM public.cotisations WHERE tontine_id=$1`,
-        [tontine.id]
-      );
-      const { rows: tirages } = await pool.query(
-        `SELECT * FROM public.tirages WHERE tontine_id=$1 ORDER BY date_tirage ASC`,
+      const { rows: cycleActif } = await pool.query(
+        `SELECT * FROM public.cycles 
+         WHERE tontine_id=$1 AND cloture=false 
+         ORDER BY numero DESC LIMIT 1`,
         [tontine.id]
       );
 
-      // ⚡ logiques inchangées (retard, tirage, cycle, paiement_attente)
-      // ...
+      if (cycleActif.length > 0) {
+        const cycle = cycleActif[0];
+
+        // 🔹 Vérifier combien ont cotisé dans ce cycle
+        const { rows: cotises } = await pool.query(
+          `SELECT COUNT(DISTINCT membre_id)::int AS nb_cotisants
+           FROM cotisations
+           WHERE tontine_id=$1 AND cycle_id=$2`,
+          [tontine.id, cycle.id]
+        );
+
+        const nbCotisants = cotises[0].nb_cotisants;
+        const nbMembres = membres.length;
+
+        if (nbCotisants < nbMembres) {
+          nouvellesAlertes.push({
+            utilisateurId: req.user.id,
+            tontineId: tontine.id,
+            type: "cycle_retard",
+            message: `⚠️ Cycle ${cycle.numero} bloqué : ${nbMembres - nbCotisants} membre(s) n’ont pas encore cotisé`,
+            urgence: "moyenne"
+          });
+        }
+      }
+
+      // 👉 Tu peux compléter ici pour d'autres alertes (retard, tirage manqué, etc.)
     }
 
     // 🔹 Insertion en DB
@@ -93,14 +114,14 @@ router.post("/generer", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { estresolue = true } = req.body; // ⚠ doit matcher le champ DB
+    const { estResolue = true } = req.body;
 
     const { rows } = await pool.query(
       `UPDATE public.alertes
-       SET estresolue=$1
+       SET "estResolue"=$1
        WHERE id=$2 AND "utilisateurId"=$3
        RETURNING *`,
-      [estresolue, id, req.user.id]
+      [estResolue, id, req.user.id]
     );
 
     if (rows.length === 0) {
