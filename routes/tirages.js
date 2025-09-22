@@ -28,7 +28,7 @@ router.get("/:tontineId", async (req, res) => {
 });
 
 /* -----------------------
-   📌 GET historique global des tirages (toutes tontines de l’utilisateur)
+   📌 GET historique global des tirages
 ------------------------ */
 router.get("/", async (req, res) => {
   try {
@@ -51,13 +51,13 @@ router.get("/", async (req, res) => {
 });
 
 /* -----------------------
-   📌 POST exécuter un tirage (par cycle)
+   📌 POST exécuter un tirage
 ------------------------ */
 router.post("/run/:tontineId", async (req, res) => {
   const { tontineId } = req.params;
 
   try {
-    // 1️⃣ Vérifier que la tontine appartient à l’utilisateur
+    // 1️⃣ Vérifier la tontine
     const t = await pool.query(
       `SELECT id, montant_cotisation, nombre_membres 
        FROM tontines 
@@ -69,7 +69,7 @@ router.post("/run/:tontineId", async (req, res) => {
     }
     const tontine = t.rows[0];
 
-    // 2️⃣ Récupérer le cycle actif (non clôturé) ou le créer
+    // 2️⃣ Cycle actif
     let cycle = await pool.query(
       `SELECT * FROM cycles 
        WHERE tontine_id = $1 AND cloture = false
@@ -78,15 +78,14 @@ router.post("/run/:tontineId", async (req, res) => {
     );
     if (cycle.rowCount === 0) {
       const r = await pool.query(
-        `INSERT INTO cycles (tontine_id, numero) 
-         VALUES ($1, 1) RETURNING *`,
+        `INSERT INTO cycles (tontine_id, numero) VALUES ($1, 1) RETURNING *`,
         [tontineId]
       );
       cycle = r;
     }
     const cycleActif = cycle.rows[0];
 
-    // 3️⃣ Vérifier que tous les membres ont cotisé pour ce cycle
+    // 3️⃣ Vérifier cotisations
     const { rows: membresNonCotisants } = await pool.query(
       `SELECT m.id, m.nom
        FROM membres m
@@ -105,7 +104,7 @@ router.post("/run/:tontineId", async (req, res) => {
       });
     }
 
-    // 4️⃣ Vérifier qu’aucun tirage n’a déjà eu lieu dans ce cycle
+    // 4️⃣ Vérifier pas déjà tiré
     const dejaTirage = await pool.query(
       `SELECT * FROM tirages 
        WHERE tontine_id = $1 AND cycle_id = $2`,
@@ -115,7 +114,7 @@ router.post("/run/:tontineId", async (req, res) => {
       return res.status(400).json({ error: "Un tirage a déjà été effectué pour ce cycle" });
     }
 
-    // 5️⃣ Sélectionner un membre gagnant aléatoirement parmi ceux qui n’ont jamais gagné
+    // 5️⃣ Choisir gagnant
     const { rows: candidats } = await pool.query(
       `SELECT m.id, m.nom
        FROM membres m
@@ -128,7 +127,7 @@ router.post("/run/:tontineId", async (req, res) => {
       [tontineId]
     );
     if (candidats.length === 0) {
-      return res.status(400).json({ error: "Tous les membres ont déjà gagné — la tontine est terminée" });
+      return res.status(400).json({ error: "Tous les membres ont déjà gagné — tontine terminée" });
     }
     const gagnant = candidats[0];
 
@@ -139,36 +138,30 @@ router.post("/run/:tontineId", async (req, res) => {
       [tontineId, gagnant.id, cycleActif.id]
     );
 
-    // 7️⃣ Clôturer le cycle actuel
-    await pool.query(
-      `UPDATE cycles SET cloture = true WHERE id = $1`,
-      [cycleActif.id]
-    );
+    // 7️⃣ Clôturer cycle
+    await pool.query(`UPDATE cycles SET cloture = true WHERE id = $1`, [cycleActif.id]);
 
-    // 8️⃣ Créer le cycle suivant (si la tontine continue)
+    // 8️⃣ Nouveau cycle ou clôture
     const nbTirages = await pool.query(
       `SELECT COUNT(*)::int as total FROM tirages WHERE tontine_id = $1`,
       [tontineId]
     );
     if (nbTirages.rows[0].total < tontine.nombre_membres) {
       await pool.query(
-        `INSERT INTO cycles (tontine_id, numero) 
-         VALUES ($1, $2)`,
+        `INSERT INTO cycles (tontine_id, numero) VALUES ($1, $2)`,
         [tontineId, cycleActif.numero + 1]
       );
     } else {
-      // Marquer la tontine comme terminée
-      await pool.query(
-        `UPDATE tontines SET statut = 'terminee' WHERE id = $1`,
-        [tontineId]
-      );
+      await pool.query(`UPDATE tontines SET statut = 'terminee' WHERE id = $1`, [tontineId]);
     }
 
+    // ✅ Réponse enrichie
     res.status(201).json({
       ...r.rows[0],
       membre_nom: gagnant.nom,
       cycle: cycleActif.numero,
-      montant: tontine.montant_cotisation
+      montant: tontine.montant_cotisation,
+      montant_total: tontine.montant_cotisation * tontine.nombre_membres
     });
   } catch (err) {
     console.error("❌ Erreur POST tirage:", err.stack);
