@@ -32,7 +32,7 @@ router.get("/", async (req, res) => {
 router.post("/generer", async (req, res) => {
   try {
     const { rows: tontines } = await pool.query(
-      `SELECT * FROM public.tontines WHERE createur=$1`,
+      `SELECT * FROM public.tontines WHERE createur=$1 AND statut='active'`,
       [req.user.id]
     );
 
@@ -43,6 +43,8 @@ router.post("/generer", async (req, res) => {
         `SELECT * FROM public.membres WHERE tontine_id=$1`,
         [tontine.id]
       );
+      const nbMembres = membres.length;
+
       const { rows: cycleActif } = await pool.query(
         `SELECT * FROM public.cycles 
          WHERE tontine_id=$1 AND cloture=false 
@@ -53,17 +55,22 @@ router.post("/generer", async (req, res) => {
       if (cycleActif.length > 0) {
         const cycle = cycleActif[0];
 
-        // 🔹 Vérifier combien ont cotisé dans ce cycle
+        // 🔹 Nombre de cotisants dans ce cycle
         const { rows: cotises } = await pool.query(
           `SELECT COUNT(DISTINCT membre_id)::int AS nb_cotisants
            FROM cotisations
            WHERE tontine_id=$1 AND cycle_id=$2`,
           [tontine.id, cycle.id]
         );
-
         const nbCotisants = cotises[0].nb_cotisants;
-        const nbMembres = membres.length;
 
+        // 🔹 Vérifier si un tirage a eu lieu
+        const { rowCount: tirageEffectue } = await pool.query(
+          `SELECT 1 FROM tirages WHERE tontine_id=$1 AND cycle_id=$2`,
+          [tontine.id, cycle.id]
+        );
+
+        // 🚨 Cas 1 : retard de cotisation
         if (nbCotisants < nbMembres) {
           nouvellesAlertes.push({
             utilisateurId: req.user.id,
@@ -73,12 +80,21 @@ router.post("/generer", async (req, res) => {
             urgence: "moyenne"
           });
         }
-      }
 
-      // 👉 Tu peux compléter ici pour d'autres alertes (retard, tirage manqué, etc.)
+        // 🚨 Cas 2 : tous ont cotisé mais pas encore de tirage
+        if (nbCotisants === nbMembres && tirageEffectue === 0) {
+          nouvellesAlertes.push({
+            utilisateurId: req.user.id,
+            tontineId: tontine.id,
+            type: "tirage",
+            message: `🎲 Tous les membres ont cotisé dans le cycle ${cycle.numero}, mais aucun tirage n’a encore été effectué`,
+            urgence: "haute"
+          });
+        }
+      }
     }
 
-    // 🔹 Insertion en DB
+    // 🔹 Insertion en DB (évite doublons grâce à UNIQUE)
     const inserted = [];
     for (const alerte of nouvellesAlertes) {
       try {
