@@ -39,6 +39,64 @@ router.get("/:tontineId", requireAuth, async (req, res) => {
 });
 
 /* -----------------------
+   📌 GET statut cotisations (tous les membres ont-ils payé ?)
+------------------------ */
+router.get("/statut/:tontineId", requireAuth, async (req, res) => {
+  const { tontineId } = req.params;
+
+  try {
+    // Vérifier que la tontine appartient à l’utilisateur
+    const { rows: tontine } = await pool.query(
+      `SELECT id, nombre_membres 
+       FROM tontines 
+       WHERE id=$1 AND createur=$2`,
+      [tontineId, req.user.id]
+    );
+    if (tontine.length === 0) {
+      return res.status(403).json({ error: "Non autorisé" });
+    }
+    const nbMembres = tontine[0].nombre_membres;
+
+    // 🔹 Récupérer le cycle actif
+    let cycle = await pool.query(
+      `SELECT * FROM cycles 
+       WHERE tontine_id=$1 AND cloture=false
+       ORDER BY numero DESC LIMIT 1`,
+      [tontineId]
+    );
+
+    if (cycle.rowCount === 0) {
+      return res.json({ pret: false, message: "Aucun cycle actif" });
+    }
+    const cycleActif = cycle.rows[0];
+
+    // 🔹 Compter combien de membres ont cotisé dans ce cycle
+    const { rows: cotises } = await pool.query(
+      `SELECT COUNT(DISTINCT membre_id)::int AS nb_cotisants
+       FROM cotisations
+       WHERE tontine_id=$1 AND cycle_id=$2`,
+      [tontineId, cycleActif.id]
+    );
+
+    const nbCotisants = cotises[0].nb_cotisants;
+    const pret = nbCotisants === nbMembres;
+
+    res.json({
+      pret,
+      cycle: cycleActif.numero,
+      nbCotisants,
+      nbMembres,
+      message: pret
+        ? "✅ Tous les membres ont cotisé, tirage possible"
+        : `⚠️ ${nbMembres - nbCotisants} membre(s) n'ont pas encore cotisé`
+    });
+  } catch (err) {
+    console.error("❌ Erreur GET statut cotisations:", err.message);
+    res.status(500).json({ error: "Erreur serveur interne" });
+  }
+});
+
+/* -----------------------
    📌 POST ajouter une cotisation
 ------------------------ */
 router.post("/", requireAuth, async (req, res) => {
@@ -101,7 +159,6 @@ router.post("/", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("❌ Erreur ajout cotisation:", err.message);
 
-    // 🔹 Gestion des erreurs PG (notamment contraintes uniques)
     if (err.code === "23505") {
       return res.status(400).json({
         error: "Ce membre a déjà cotisé pour ce cycle"
