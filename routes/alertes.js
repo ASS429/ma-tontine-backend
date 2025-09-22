@@ -11,6 +11,8 @@ router.use(requireAuth);
 -------------------------------- */
 router.get("/", async (req, res) => {
   try {
+    console.log("🔍 GET /alertes utilisateur:", req.user?.id);
+
     const { rows } = await pool.query(
       `SELECT * FROM public.alertes 
        WHERE "utilisateurId"=$1 
@@ -32,7 +34,7 @@ router.get("/", async (req, res) => {
 router.post("/generer", async (req, res) => {
   try {
     const { rows: tontines } = await pool.query(
-      `SELECT * FROM public.tontines WHERE createur=$1 AND statut='active'`,
+      `SELECT * FROM public.tontines WHERE createur=$1`,
       [req.user.id]
     );
 
@@ -43,65 +45,27 @@ router.post("/generer", async (req, res) => {
         `SELECT * FROM public.membres WHERE tontine_id=$1`,
         [tontine.id]
       );
-      const nbMembres = membres.length;
-
-      const { rows: cycleActif } = await pool.query(
-        `SELECT * FROM public.cycles 
-         WHERE tontine_id=$1 AND cloture=false 
-         ORDER BY numero DESC LIMIT 1`,
+      const { rows: paiements } = await pool.query(
+        `SELECT * FROM public.cotisations WHERE tontine_id=$1`,
+        [tontine.id]
+      );
+      const { rows: tirages } = await pool.query(
+        `SELECT * FROM public.tirages WHERE tontine_id=$1 ORDER BY date_tirage ASC`,
         [tontine.id]
       );
 
-      if (cycleActif.length > 0) {
-        const cycle = cycleActif[0];
-
-        // 🔹 Nombre de cotisants dans ce cycle
-        const { rows: cotises } = await pool.query(
-          `SELECT COUNT(DISTINCT membre_id)::int AS nb_cotisants
-           FROM cotisations
-           WHERE tontine_id=$1 AND cycle_id=$2`,
-          [tontine.id, cycle.id]
-        );
-        const nbCotisants = cotises[0].nb_cotisants;
-
-        // 🔹 Vérifier si un tirage a eu lieu
-        const { rowCount: tirageEffectue } = await pool.query(
-          `SELECT 1 FROM tirages WHERE tontine_id=$1 AND cycle_id=$2`,
-          [tontine.id, cycle.id]
-        );
-
-        // 🚨 Cas 1 : retard de cotisation
-        if (nbCotisants < nbMembres) {
-          nouvellesAlertes.push({
-            utilisateurId: req.user.id,
-            tontineId: tontine.id,
-            type: "cycle_retard",
-            message: `⚠️ Cycle ${cycle.numero} bloqué : ${nbMembres - nbCotisants} membre(s) n’ont pas encore cotisé`,
-            urgence: "moyenne"
-          });
-        }
-
-        // 🚨 Cas 2 : tous ont cotisé mais pas encore de tirage
-        if (nbCotisants === nbMembres && tirageEffectue === 0) {
-          nouvellesAlertes.push({
-            utilisateurId: req.user.id,
-            tontineId: tontine.id,
-            type: "tirage",
-            message: `🎲 Tous les membres ont cotisé dans le cycle ${cycle.numero}, mais aucun tirage n’a encore été effectué`,
-            urgence: "haute"
-          });
-        }
-      }
+      // ⚡ Ajoute ta logique de génération ici (retards, tirages, etc.)
     }
 
-    // 🔹 Insertion en DB (évite doublons grâce à UNIQUE)
+    // 🔹 Insertion en DB
     const inserted = [];
     for (const alerte of nouvellesAlertes) {
       try {
         const { rows } = await pool.query(
-          `INSERT INTO public.alertes ("utilisateurId","tontineId",type,message,urgence)
+          `INSERT INTO public.alertes 
+           ("utilisateurId","tontineId","type","message","urgence")
            VALUES ($1,$2,$3,$4,$5)
-           ON CONFLICT ("utilisateurId","tontineId",type,message) DO NOTHING
+           ON CONFLICT ("utilisateurId","tontineId","type","message") DO NOTHING
            RETURNING *`,
           [
             alerte.utilisateurId,
@@ -130,7 +94,7 @@ router.post("/generer", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { estResolue = true } = req.body;
+    const { estResolue = true } = req.body; // ✅ cohérent avec la DB
 
     const { rows } = await pool.query(
       `UPDATE public.alertes
