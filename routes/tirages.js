@@ -161,11 +161,13 @@ router.post("/run/:tontineId", async (req, res) => {
       });
     }
 
-    // 6️⃣ Exécution réelle
+    // 6️⃣ Exécution réelle avec montant_gagne
+    const montantGagne = tontine.montant_cotisation * tontine.nombre_membres;
+
     const r = await pool.query(
-      `INSERT INTO tirages (tontine_id, membre_id, cycle_id, date_tirage) 
-       VALUES ($1, $2, $3, NOW()) RETURNING *`,
-      [tontineId, gagnant.id, cycleActif.id]
+      `INSERT INTO tirages (tontine_id, membre_id, cycle_id, date_tirage, montant_gagne) 
+       VALUES ($1, $2, $3, NOW(), $4) RETURNING *`,
+      [tontineId, gagnant.id, cycleActif.id, montantGagne]
     );
 
     // 7️⃣ Clôturer cycle
@@ -194,7 +196,7 @@ router.post("/run/:tontineId", async (req, res) => {
       membre_nom: gagnant.nom,
       cycle: cycleActif.numero,
       montant: tontine.montant_cotisation,
-      montant_total: tontine.montant_cotisation * tontine.nombre_membres,
+      montant_total: montantGagne,
     });
   } catch (err) {
     console.error("❌ Erreur POST tirage:", err.stack);
