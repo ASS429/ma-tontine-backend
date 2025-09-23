@@ -54,7 +54,7 @@ router.post("/", async (req, res) => {
       [tontine_id, membre_id, type, montant, moyen, statut || "en_attente"]
     );
 
-    // 🔹 Si le paiement est déjà "effectué", mettre à jour le compte
+    // 🔹 Si le paiement est déjà "effectué", mettre à jour ou créer le compte
     if ((statut || "en_attente") === "effectue") {
       const { rowCount } = await client.query(
         `UPDATE comptes
@@ -63,9 +63,17 @@ router.post("/", async (req, res) => {
         [type, montant, req.user.id, moyen]
       );
 
-      // Si aucun compte mis à jour → erreur explicite
+      // Si aucun compte n’existe → créer automatiquement
       if (rowCount === 0) {
-        throw new Error(`Aucun compte trouvé pour l’utilisateur avec moyen ${moyen}`);
+        await client.query(
+          `INSERT INTO comptes (utilisateur_id, type, solde)
+           VALUES ($1,$2,$3)`,
+          [
+            req.user.id,
+            moyen,
+            type === "cotisation" ? montant : -montant
+          ]
+        );
       }
     }
 
@@ -110,12 +118,24 @@ router.put("/:id", async (req, res) => {
 
     // si passage en "effectue"
     if (paiement.statut !== "effectue" && statut === "effectue") {
-      await client.query(
+      const { rowCount } = await client.query(
         `UPDATE comptes
          SET solde = solde + CASE WHEN $1='cotisation' THEN $2 ELSE -$2 END
          WHERE utilisateur_id=$3 AND type=$4`,
         [paiement.type, paiement.montant, req.user.id, paiement.moyen]
       );
+
+      if (rowCount === 0) {
+        await client.query(
+          `INSERT INTO comptes (utilisateur_id, type, solde)
+           VALUES ($1,$2,$3)`,
+          [
+            req.user.id,
+            paiement.moyen,
+            paiement.type === "cotisation" ? paiement.montant : -paiement.montant
+          ]
+        );
+      }
     }
 
     await client.query("COMMIT");
@@ -123,7 +143,7 @@ router.put("/:id", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("❌ Erreur update paiement:", err.message);
-    res.status(500).json({ error: "Erreur mise à jour paiement" });
+    res.status(500).json({ error: "Erreur mise à jour paiement", details: err.message });
   } finally {
     client.release();
   }
@@ -164,7 +184,7 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("❌ Erreur suppression paiement:", err.message);
-    res.status(500).json({ error: "Erreur suppression paiement" });
+    res.status(500).json({ error: "Erreur suppression paiement", details: err.message });
   } finally {
     client.release();
   }
