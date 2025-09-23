@@ -113,4 +113,45 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// 📌 DELETE supprimer un paiement
+router.delete("/:id", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+
+    await client.query("BEGIN");
+
+    // Vérifier paiement
+    const { rows: existing } = await client.query(
+      `SELECT * FROM paiements WHERE id=$1`,
+      [id]
+    );
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "Paiement introuvable" });
+    }
+    const paiement = existing[0];
+
+    // Si paiement déjà effectue → réajuster solde
+    if (paiement.statut === "effectue") {
+      await client.query(
+        `UPDATE comptes
+         SET solde = solde - CASE WHEN $1='cotisation' THEN $2 ELSE -$2 END
+         WHERE utilisateur_id=$3 AND type=$4`,
+        [paiement.type, paiement.montant, req.user.id, paiement.moyen]
+      );
+    }
+
+    await client.query(`DELETE FROM paiements WHERE id=$1`, [id]);
+
+    await client.query("COMMIT");
+    res.json({ success: true, message: "Paiement supprimé ✅" });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("❌ Erreur suppression paiement:", err.message);
+    res.status(500).json({ error: "Erreur suppression paiement" });
+  } finally {
+    client.release();
+  }
+});
+
 export default router;
