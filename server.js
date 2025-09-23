@@ -2,6 +2,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+
 import tontinesRoutes from "./routes/tontines.js";
 import membresRoutes from "./routes/membres.js";
 import cotisationsRoutes from "./routes/cotisations.js";
@@ -10,15 +11,17 @@ import authRoutes from "./routes/auth.js";
 import tiragesRoutes from "./routes/tirages.js";
 import statsRoutes from "./routes/stats.js";
 import alertesRoutes from "./routes/alertes.js";
+import paiementsRoutes from "./routes/paiements.js";
+import comptesRoutes from "./routes/comptes.js";
 
 dotenv.config();
 const app = express();
 
 app.use(cors({
   origin: [
-    "http://localhost:5173",               // pour le dev
-    process.env.FRONTEND_URL,              // ton URL Render (déjà dans ton .env)
-    "https://ma-tontine-frontend-1.onrender.com" // ajoute explicitement
+    "http://localhost:5173",               // pour le dev local
+    process.env.FRONTEND_URL,              // ton URL Render du frontend (env)
+    "https://ma-tontine-frontend-1.onrender.com" // explicitement ton frontend déployé
   ],
   credentials: true,
 }));
@@ -37,6 +40,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/tirages", tiragesRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/alertes", alertesRoutes);
+app.use("/api/paiements", paiementsRoutes);
+app.use("/api/comptes", comptesRoutes);
 
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
@@ -49,6 +54,9 @@ app.listen(PORT, () => {
   console.log(" - /api/utilisateurs");
   console.log(" - /api/auth");
   console.log(" - /api/tirages");
-  console.log(" - /health");
   console.log(" - /api/stats");
+  console.log(" - /api/alertes");
+  console.log(" - /api/paiements");  
+  console.log(" - /api/comptes");    
+  console.log(" - /health");
 });
