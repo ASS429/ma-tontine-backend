@@ -30,12 +30,23 @@ router.post("/", async (req, res) => {
   const client = await pool.connect();
   try {
     const { tontine_id, membre_id, type, montant, moyen, statut } = req.body;
+
     if (!tontine_id || !membre_id || !type || !montant || !moyen) {
       return res.status(400).json({ error: "Champs obligatoires manquants" });
     }
 
+    // Vérifier que la tontine appartient à l’utilisateur
+    const { rows: tontine } = await client.query(
+      `SELECT id FROM tontines WHERE id=$1 AND createur=$2`,
+      [tontine_id, req.user.id]
+    );
+    if (tontine.length === 0) {
+      return res.status(403).json({ error: "Non autorisé" });
+    }
+
     await client.query("BEGIN");
 
+    // 🔹 Insérer le paiement
     const { rows: inserted } = await client.query(
       `INSERT INTO paiements (tontine_id, membre_id, type, montant, moyen, statut)
        VALUES ($1,$2,$3,$4,$5,$6)
@@ -43,14 +54,19 @@ router.post("/", async (req, res) => {
       [tontine_id, membre_id, type, montant, moyen, statut || "en_attente"]
     );
 
-    // si directement effectue → maj solde
+    // 🔹 Si le paiement est déjà "effectué", mettre à jour le compte
     if ((statut || "en_attente") === "effectue") {
-      await client.query(
+      const { rowCount } = await client.query(
         `UPDATE comptes
          SET solde = solde + CASE WHEN $1='cotisation' THEN $2 ELSE -$2 END
          WHERE utilisateur_id=$3 AND type=$4`,
         [type, montant, req.user.id, moyen]
       );
+
+      // Si aucun compte mis à jour → erreur explicite
+      if (rowCount === 0) {
+        throw new Error(`Aucun compte trouvé pour l’utilisateur avec moyen ${moyen}`);
+      }
     }
 
     await client.query("COMMIT");
@@ -58,7 +74,7 @@ router.post("/", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("❌ Erreur création paiement:", err.message);
-    res.status(500).json({ error: "Erreur création paiement" });
+    res.status(500).json({ error: "Erreur création paiement", details: err.message });
   } finally {
     client.release();
   }
