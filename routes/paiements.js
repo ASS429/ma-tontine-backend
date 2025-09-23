@@ -58,12 +58,11 @@ router.post("/", async (req, res) => {
     if ((statut || "en_attente") === "effectue") {
       const { rowCount } = await client.query(
         `UPDATE comptes
-         SET solde = solde + CASE WHEN $1='cotisation' THEN $2 ELSE -$2 END
+         SET solde = solde + CASE WHEN $1='cotisation' THEN $2::numeric ELSE -($2::numeric) END
          WHERE utilisateur_id=$3 AND type=$4`,
         [type, montant, req.user.id, moyen]
       );
 
-      // Si aucun compte n’existe → créer automatiquement
       if (rowCount === 0) {
         await client.query(
           `INSERT INTO comptes (utilisateur_id, type, solde)
@@ -120,7 +119,7 @@ router.put("/:id", async (req, res) => {
     if (paiement.statut !== "effectue" && statut === "effectue") {
       const { rowCount } = await client.query(
         `UPDATE comptes
-         SET solde = solde + CASE WHEN $1='cotisation' THEN $2 ELSE -$2 END
+         SET solde = solde + CASE WHEN $1='cotisation' THEN $2::numeric ELSE -($2::numeric) END
          WHERE utilisateur_id=$3 AND type=$4`,
         [paiement.type, paiement.montant, req.user.id, paiement.moyen]
       );
@@ -171,7 +170,7 @@ router.delete("/:id", async (req, res) => {
     if (paiement.statut === "effectue") {
       await client.query(
         `UPDATE comptes
-         SET solde = solde - CASE WHEN $1='cotisation' THEN $2 ELSE -$2 END
+         SET solde = solde - CASE WHEN $1='cotisation' THEN $2::numeric ELSE -($2::numeric) END
          WHERE utilisateur_id=$3 AND type=$4`,
         [paiement.type, paiement.montant, req.user.id, paiement.moyen]
       );
