@@ -1,3 +1,4 @@
+// routes/stats.js
 import express from "express";
 import { requireAuth } from "../middleware/auth.js";
 import pool from "../db.js";
@@ -18,8 +19,10 @@ router.get("/overview", async (req, res) => {
       montantCollecte,
       tiragesEffectues,
       retards,
+      cyclesRetard,
+      tiragesDisponibles,
       paiementsAttente,
-      tiragesDisponibles
+      paiementsTotal
     ] = await Promise.all([
       client.query(
         `SELECT count(*)::int as total
@@ -86,6 +89,21 @@ router.get("/overview", async (req, res) => {
              )
            )`,
         [req.user.id]
+      ),
+      client.query(
+        `SELECT count(*)::int as total
+         FROM paiements p
+         JOIN tontines t ON t.id = p.tontine_id
+         WHERE t.createur = $1
+           AND p.statut = 'en_attente'`,
+        [req.user.id]
+      ),
+      client.query(
+        `SELECT count(*)::int as total
+         FROM paiements p
+         JOIN tontines t ON t.id = p.tontine_id
+         WHERE t.createur = $1`,
+        [req.user.id]
       )
     ]);
 
@@ -95,8 +113,10 @@ router.get("/overview", async (req, res) => {
       montant_collecte: montantCollecte.rows[0].total,
       tirages_effectues: tiragesEffectues.rows[0].total,
       retards: retards.rows[0].total,
+      cycles_retard: cyclesRetard.rows[0].total,
+      tirages_disponibles: tiragesDisponibles.rows[0].total,
       paiements_attente: paiementsAttente.rows[0].total,
-      tirages_disponibles: tiragesDisponibles.rows[0].total
+      paiements_total: paiementsTotal.rows[0].total
     });
 
     client.release();
