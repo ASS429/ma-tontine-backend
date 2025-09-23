@@ -5,6 +5,39 @@ import pool from "../db.js";
 const router = express.Router();
 
 /* -----------------------
+   📌 GET membres d’une tontine (liste simple)
+   ➝ Utilisé pour "Enregistrer un paiement"
+------------------------ */
+router.get("/tontine/:id", requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Vérifier que la tontine appartient à l’utilisateur
+    const { rows: tontines } = await pool.query(
+      "SELECT id FROM tontines WHERE id=$1 AND createur=$2",
+      [id, req.user.id]
+    );
+    if (tontines.length === 0) {
+      return res.status(403).json({ error: "Non autorisé" });
+    }
+
+    // Retourner uniquement la liste des membres
+    const { rows: membres } = await pool.query(
+      `SELECT id, nom, telephone, adresse, cree_le
+       FROM membres
+       WHERE tontine_id=$1
+       ORDER BY cree_le ASC`,
+      [id]
+    );
+
+    res.json(membres);
+  } catch (err) {
+    console.error("❌ Erreur GET /membres/tontine/:id:", err.message);
+    res.status(500).json({ error: "Erreur serveur interne" });
+  }
+});
+
+/* -----------------------
    📌 GET détail complet d’une tontine
    (infos + membres + cotisations)
 ------------------------ */
@@ -60,11 +93,10 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     res.json(tontine);
   } catch (err) {
-    console.error("❌ Erreur GET /tontines/:id:", err.message);
+    console.error("❌ Erreur GET /membres/:id:", err.message);
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
-
 
 /* -----------------------
    📌 POST ajouter un membre
@@ -101,7 +133,6 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-
 /* -----------------------
    📌 DELETE supprimer un membre
 ------------------------ */
@@ -109,7 +140,6 @@ router.delete("/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Vérifier que le membre appartient bien à une tontine de l'utilisateur connecté
     const { rows: membre } = await pool.query(
       `SELECT m.id, m.tontine_id
        FROM membres m
@@ -122,7 +152,6 @@ router.delete("/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Non autorisé" });
     }
 
-    // Supprimer le membre (⚠️ cascade = supprime cotisations et tirages liés)
     await pool.query("DELETE FROM membres WHERE id=$1", [id]);
 
     res.json({ success: true, message: "Membre supprimé avec succès" });
@@ -144,7 +173,6 @@ router.put("/:id", requireAuth, async (req, res) => {
   }
 
   try {
-    // Vérifier droits
     const { rows: membre } = await pool.query(
       `SELECT m.id
        FROM membres m
@@ -157,7 +185,6 @@ router.put("/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Non autorisé" });
     }
 
-    // Mise à jour (⚠️ on garde cree_le intact)
     const { rows } = await pool.query(
       `UPDATE membres 
        SET nom=$1, telephone=$2, adresse=$3, modifie_le=NOW()
@@ -172,6 +199,5 @@ router.put("/:id", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Erreur serveur interne" });
   }
 });
-
 
 export default router;
