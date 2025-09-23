@@ -11,8 +11,6 @@ router.use(requireAuth);
 -------------------------------- */
 router.get("/", async (req, res) => {
   try {
-    console.log("🔍 GET /alertes utilisateur:", req.user?.id);
-
     if (!req.user?.id) {
       return res.status(401).json({ error: "Utilisateur non authentifié" });
     }
@@ -20,8 +18,8 @@ router.get("/", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT * FROM public.alertes 
        WHERE "utilisateurId"=$1 
-         AND COALESCE(estresolue, false) = false
-       ORDER BY datecreation DESC`,
+         AND COALESCE(estResolue, false) = false
+       ORDER BY dateCreation DESC`,
       [req.user.id]
     );
 
@@ -45,11 +43,12 @@ router.post("/generer", async (req, res) => {
     let nouvellesAlertes = [];
 
     for (const tontine of tontines) {
+      // 🔹 Récup membres, cotisations, tirages, cycles
       const { rows: membres } = await pool.query(
         `SELECT * FROM public.membres WHERE tontine_id=$1`,
         [tontine.id]
       );
-      const { rows: paiements } = await pool.query(
+      const { rows: cotisations } = await pool.query(
         `SELECT * FROM public.cotisations WHERE tontine_id=$1`,
         [tontine.id]
       );
@@ -57,8 +56,74 @@ router.post("/generer", async (req, res) => {
         `SELECT * FROM public.tirages WHERE tontine_id=$1 ORDER BY date_tirage ASC`,
         [tontine.id]
       );
+      const { rows: cycles } = await pool.query(
+        `SELECT * FROM public.cycles WHERE tontine_id=$1 ORDER BY numero DESC LIMIT 1`,
+        [tontine.id]
+      );
+      const cycleActif = cycles[0];
 
-      // ⚡ TODO : Ajoute ici la logique métier pour générer des alertes dynamiques
+      // 1️⃣ Tirage disponible
+      if (cycleActif) {
+        // Vérifier si tous les membres ont cotisé pour ce cycle
+        const retardataires = [];
+        for (const m of membres) {
+          const aCotise = cotisations.some(c => c.membre_id === m.id && c.cycle_id === cycleActif.id);
+          if (!aCotise) retardataires.push(m.nom);
+        }
+
+        const dejaTire = tirages.some(t => t.cycle_id === cycleActif.id);
+
+        if (retardataires.length === 0 && !dejaTire) {
+          nouvellesAlertes.push({
+            utilisateurId: req.user.id,
+            tontineId: tontine.id,
+            type: "tirage",
+            message: `🎲 Tirage disponible pour "${tontine.nom}" (Cycle ${cycleActif.numero})`,
+            urgence: "haute",
+          });
+        }
+
+        // 2️⃣ Retards de paiement
+        if (retardataires.length > 0) {
+          nouvellesAlertes.push({
+            utilisateurId: req.user.id,
+            tontineId: tontine.id,
+            type: "retard",
+            message: `⚠️ Retard de paiement dans "${tontine.nom}" : ${retardataires.join(", ")}`,
+            urgence: "haute",
+          });
+        }
+
+        // 3️⃣ Cycle en retard (par ex : fréquence mensuelle et aucun tirage après la date prévue)
+        const dateLimite = new Date(cycleActif.cree_le);
+        if (tontine.frequence_tirage === "mensuel") {
+          dateLimite.setMonth(dateLimite.getMonth() + 1);
+        } else if (tontine.frequence_tirage === "hebdomadaire") {
+          dateLimite.setDate(dateLimite.getDate() + 7);
+        }
+
+        if (new Date() > dateLimite && !dejaTire) {
+          nouvellesAlertes.push({
+            utilisateurId: req.user.id,
+            tontineId: tontine.id,
+            type: "cycle_retard",
+            message: `⏳ Cycle en retard pour "${tontine.nom}" (tirage manquant)`,
+            urgence: "moyenne",
+          });
+        }
+      }
+
+      // 4️⃣ Résultat de tirage (dernier gagnant)
+      if (tirages.length > 0) {
+        const dernier = tirages[tirages.length - 1];
+        nouvellesAlertes.push({
+          utilisateurId: req.user.id,
+          tontineId: tontine.id,
+          type: "resultat_tirage",
+          message: `🏆 ${dernier.membre_nom} a gagné ${Number(dernier.montant_gagne).toLocaleString()} FCFA dans "${tontine.nom}"`,
+          urgence: "basse",
+        });
+      }
     }
 
     // 🔹 Insertion en DB
@@ -102,7 +167,7 @@ router.put("/:id", async (req, res) => {
 
     const { rows } = await pool.query(
       `UPDATE public.alertes
-       SET estresolue=$1
+       SET estResolue=$1
        WHERE id=$2 AND "utilisateurId"=$3
        RETURNING *`,
       [estResolue, id, req.user.id]
