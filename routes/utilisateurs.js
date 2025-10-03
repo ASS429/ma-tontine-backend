@@ -122,5 +122,113 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
+/* -----------------------
+   📌 PUT bloquer un utilisateur
+------------------------ */
+router.put("/:id/block", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé aux admins" });
+
+    const { rows } = await pool.query(
+      `UPDATE utilisateurs 
+       SET status='Bloqué' 
+       WHERE id=$1 
+       RETURNING id, nom_complet, email, role, plan, status, payment_status`,
+      [req.params.id]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    res.json({ message: "🚫 Utilisateur bloqué", utilisateur: rows[0] });
+  } catch (err) {
+    console.error("Erreur block:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* -----------------------
+   📌 PUT activer un utilisateur
+------------------------ */
+router.put("/:id/activate", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé aux admins" });
+
+    const { rows } = await pool.query(
+      `UPDATE utilisateurs 
+       SET status='Actif' 
+       WHERE id=$1 
+       RETURNING id, nom_complet, email, role, plan, status, payment_status`,
+      [req.params.id]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    res.json({ message: "✅ Utilisateur activé", utilisateur: rows[0] });
+  } catch (err) {
+    console.error("Erreur activate:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* -----------------------
+   📌 DELETE supprimer un utilisateur
+------------------------ */
+router.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé aux admins" });
+
+    const { rowCount } = await pool.query(`DELETE FROM utilisateurs WHERE id=$1`, [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+
+    res.json({ message: "🗑️ Utilisateur supprimé" });
+  } catch (err) {
+    console.error("Erreur suppression utilisateur:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* -----------------------
+   📌 PUT valider un abonné Premium
+------------------------ */
+router.put("/:id/approve", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé aux admins" });
+
+    const { rows } = await pool.query(
+      `UPDATE utilisateurs 
+       SET payment_status='effectue', expiration=NOW() + INTERVAL '30 days'
+       WHERE id=$1 
+       RETURNING id, nom_complet, email, plan, payment_status, expiration`,
+      [req.params.id]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    res.json({ message: "✅ Abonnement validé", utilisateur: rows[0] });
+  } catch (err) {
+    console.error("Erreur approve:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* -----------------------
+   📌 PUT rejeter une demande Premium
+------------------------ */
+router.put("/:id/reject", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé aux admins" });
+
+    const { rows } = await pool.query(
+      `UPDATE utilisateurs 
+       SET plan='Free', payment_status='rejete', expiration=NULL
+       WHERE id=$1 
+       RETURNING id, nom_complet, email, plan, payment_status, expiration`,
+      [req.params.id]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    res.json({ message: "❌ Demande rejetée", utilisateur: rows[0] });
+  } catch (err) {
+    console.error("Erreur reject:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 export default router;
