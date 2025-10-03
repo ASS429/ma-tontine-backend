@@ -65,34 +65,26 @@ router.delete("/me", requireAuth, async (req, res) => {
 
 /* -----------------------
    📌 POST upgrade abonnement (Free → Premium)
+   → L’utilisateur fait une demande, statut "en_attente"
 ------------------------ */
 router.post("/upgrade", requireAuth, async (req, res) => {
-  const { plan } = req.body; // "Premium" ou "Free"
-  if (!plan || !["Free", "Premium"].includes(plan)) {
-    return res.status(400).json({ error: "Plan invalide" });
+  const { plan, phone, payment_method } = req.body;
+
+  if (!plan || plan !== "Premium") {
+    return res.status(400).json({ error: "Plan invalide (seul Premium est accepté)" });
   }
 
   try {
-    // Exemple : abonnement premium valable 30 jours
-    let expiration = null;
-    if (plan === "Premium") {
-      expiration = new Date();
-      expiration.setDate(expiration.getDate() + 30);
-    }
-
     const { rows } = await pool.query(
       `UPDATE utilisateurs 
-       SET plan=$1, 
-           payment_status=$2, 
-           expiration=$3
-       WHERE id=$4
+       SET plan='Premium',
+           payment_status='en_attente',
+           expiration=NULL,
+           phone=$1,
+           payment_method=$2
+       WHERE id=$3
        RETURNING id, email, role, plan, payment_status, expiration, cree_le`,
-      [
-        plan,
-        plan === "Premium" ? "effectue" : "en_attente",
-        expiration,
-        req.user.id
-      ]
+      [phone || null, payment_method || null, req.user.id]
     );
 
     if (rows.length === 0) {
@@ -100,13 +92,14 @@ router.post("/upgrade", requireAuth, async (req, res) => {
     }
 
     res.json({
-      message: `✅ Votre compte est maintenant en ${plan}`,
+      message: "✅ Demande d’upgrade envoyée. Contactez un administrateur pour valider.",
       utilisateur: rows[0]
     });
   } catch (err) {
     console.error("Erreur upgrade abonnement:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Impossible de passer en Premium" });
   }
 });
+
 
 export default router;
