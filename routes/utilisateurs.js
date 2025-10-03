@@ -10,13 +10,17 @@ const router = express.Router();
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT id, nom_complet, cree_le FROM utilisateurs WHERE id=$1",
+      `SELECT id, nom_complet, email, role, plan, payment_status, expiration, cree_le 
+       FROM utilisateurs 
+       WHERE id=$1`,
       [req.user.id]
     );
+
     if (rows.length === 0) {
       return res.status(404).json({ error: "Profil introuvable" });
     }
-    res.json(rows[0]);
+
+    res.json(rows[0]); // ✅ On renvoie aussi role et plan
   } catch (err) {
     console.error("Erreur profil:", err.message);
     res.status(500).json({ error: err.message });
@@ -32,9 +36,13 @@ router.put("/me", requireAuth, async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      "UPDATE utilisateurs SET nom_complet=$1 WHERE id=$2 RETURNING id, nom_complet, cree_le",
+      `UPDATE utilisateurs 
+       SET nom_complet=$1 
+       WHERE id=$2 
+       RETURNING id, nom_complet, email, role, plan, payment_status, expiration, cree_le`,
       [nom_complet, req.user.id]
     );
+
     res.json(rows[0]);
   } catch (err) {
     console.error("Erreur maj profil:", err.message);
@@ -74,9 +82,11 @@ router.post("/upgrade", requireAuth, async (req, res) => {
 
     const { rows } = await pool.query(
       `UPDATE utilisateurs 
-       SET plan=$1, payment_status=$2, expiration=$3
+       SET plan=$1, 
+           payment_status=$2, 
+           expiration=$3
        WHERE id=$4
-       RETURNING id, email, plan, payment_status, expiration`,
+       RETURNING id, email, role, plan, payment_status, expiration, cree_le`,
       [
         plan,
         plan === "Premium" ? "effectue" : "en_attente",
@@ -98,6 +108,5 @@ router.post("/upgrade", requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 export default router;
