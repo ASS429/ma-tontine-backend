@@ -146,6 +146,31 @@ router.post("/", requireAuth, async (req, res) => {
   }
 
   try {
+    // 🔎 Vérifier le plan de l’utilisateur
+    const { rows: userRows } = await pool.query(
+      "SELECT plan FROM utilisateurs WHERE id=$1",
+      [req.user.id]
+    );
+
+    const plan = userRows[0]?.plan || "Free";
+
+    if (plan === "Free") {
+      // Compter combien de tontines il a déjà
+      const { rows: countRows } = await pool.query(
+        "SELECT COUNT(*) FROM tontines WHERE createur=$1",
+        [req.user.id]
+      );
+
+      const tontineCount = parseInt(countRows[0].count);
+
+      if (tontineCount >= 2) {
+        return res.status(403).json({
+          error: "🚫 Limite atteinte : en plan Free vous ne pouvez créer que 2 tontines."
+        });
+      }
+    }
+
+    // ✅ Création si OK
     const { rows } = await pool.query(
       `INSERT INTO tontines (
          nom, type, montant_cotisation, frequence_cotisation,
@@ -169,9 +194,6 @@ router.post("/", requireAuth, async (req, res) => {
 
     const t = rows[0];
 
-    // ✅ recalcul immédiat du statut
-    const statut_calcule = "active"; // à la création, toujours active
-
     res.status(201).json({
       id: t.id,
       nom: t.nom,
@@ -182,7 +204,7 @@ router.post("/", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-      statut: statut_calcule,
+      statut: "active", // à la création, toujours active
       creeLe: t.cree_le,
       membres: [],
       cotisations: [],
@@ -191,9 +213,10 @@ router.post("/", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("Erreur création tontine:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Erreur serveur: " + err.message });
   }
 });
+
 
 /* -----------------------
    📌 PUT modifier une tontine
