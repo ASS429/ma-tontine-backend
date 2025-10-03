@@ -110,9 +110,9 @@ router.get("/", requireAuth, async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, nom_complet, email, role, plan, payment_status, expiration, phone, cree_le
-       FROM utilisateurs
-       ORDER BY cree_le DESC`
+      `SELECT id, nom_complet, email, role, plan, status, payment_status, expiration, phone, cree_le
+   FROM utilisateurs
+   ORDER BY cree_le DESC`
     );
 
     res.json(rows);
