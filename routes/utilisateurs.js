@@ -231,4 +231,38 @@ router.put("/:id/reject", requireAuth, async (req, res) => {
   }
 });
 
+/* -----------------------
+   📌 POST envoyer un rappel à un utilisateur
+   (admin uniquement)
+------------------------ */
+router.post("/:id/reminder", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
+    }
+
+    const { id } = req.params;
+
+    // Vérifier si l'utilisateur existe
+    const { rows } = await pool.query(
+      "SELECT id, nom_complet, email FROM utilisateurs WHERE id=$1",
+      [id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Utilisateur introuvable" });
+    }
+
+    const user = rows[0];
+
+    // 👉 Ici, tu peux envoyer un vrai email ou SMS
+    // Exemple minimal : juste un log
+    console.log(`📩 Rappel envoyé à ${user.email} (${user.nom_complet})`);
+
+    res.json({ message: `Rappel envoyé à ${user.nom_complet} (${user.email})` });
+  } catch (err) {
+    console.error("Erreur envoi rappel:", err.message);
+    res.status(500).json({ error: "Impossible d’envoyer le rappel" });
+  }
+});
+
 export default router;
