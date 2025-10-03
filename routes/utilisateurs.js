@@ -5,13 +5,13 @@ import pool from "../db.js";
 const router = express.Router();
 
 /* -----------------------
-   📌 GET mon profil
+   📌 GET mon profil complet
 ------------------------ */
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, nom_complet, email, role, plan, payment_status, expiration, cree_le 
-       FROM utilisateurs 
+      `SELECT id, nom_complet, email, role, plan, payment_status, expiration, cree_le
+       FROM utilisateurs
        WHERE id=$1`,
       [req.user.id]
     );
@@ -20,7 +20,7 @@ router.get("/me", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Profil introuvable" });
     }
 
-    res.json(rows[0]); // ✅ On renvoie aussi role et plan
+    res.json(rows[0]); // ✅ renvoie toutes les infos
   } catch (err) {
     console.error("Erreur profil:", err.message);
     res.status(500).json({ error: err.message });
