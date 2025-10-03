@@ -55,4 +55,49 @@ router.delete("/me", requireAuth, async (req, res) => {
   }
 });
 
+/* -----------------------
+   📌 POST upgrade abonnement (Free → Premium)
+------------------------ */
+router.post("/upgrade", requireAuth, async (req, res) => {
+  const { plan } = req.body; // "Premium" ou "Free"
+  if (!plan || !["Free", "Premium"].includes(plan)) {
+    return res.status(400).json({ error: "Plan invalide" });
+  }
+
+  try {
+    // Exemple : abonnement premium valable 30 jours
+    let expiration = null;
+    if (plan === "Premium") {
+      expiration = new Date();
+      expiration.setDate(expiration.getDate() + 30);
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE utilisateurs 
+       SET plan=$1, payment_status=$2, expiration=$3
+       WHERE id=$4
+       RETURNING id, email, plan, payment_status, expiration`,
+      [
+        plan,
+        plan === "Premium" ? "effectue" : "en_attente",
+        expiration,
+        req.user.id
+      ]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Utilisateur introuvable" });
+    }
+
+    res.json({
+      message: `✅ Votre compte est maintenant en ${plan}`,
+      utilisateur: rows[0]
+    });
+  } catch (err) {
+    console.error("Erreur upgrade abonnement:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 export default router;
