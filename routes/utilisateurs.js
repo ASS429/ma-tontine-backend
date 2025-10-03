@@ -101,5 +101,26 @@ router.post("/upgrade", requireAuth, async (req, res) => {
   }
 });
 
+// 📌 GET tous les utilisateurs (réservé admin)
+router.get("/", requireAuth, async (req, res) => {
+  try {
+    // Vérifie si c'est bien un admin
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, nom_complet, email, role, plan, payment_status, expiration, phone, cree_le
+       FROM utilisateurs
+       ORDER BY cree_le DESC`
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("Erreur liste utilisateurs:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 export default router;
