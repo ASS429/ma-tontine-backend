@@ -295,11 +295,11 @@ router.post("/", requireAuth, async (req, res) => {
     const tempPassword = Math.random().toString(36).slice(-8);
 
     const { rows } = await pool.query(
-      `INSERT INTO utilisateurs (nom_complet, email, phone, plan, payment_method, role, status, payment_status, password)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, crypt($9, gen_salt('bf')))
-       RETURNING id, nom_complet, email, phone, plan, payment_method, role, status, payment_status, cree_le`,
-      [nom_complet, email, phone, plan, payment_method, role, status, payment_status, tempPassword]
-    );
+  `INSERT INTO utilisateurs (nom_complet, email, phone, plan, payment_method, role, status, payment_status)
+   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+   RETURNING id, nom_complet, email, phone, plan, payment_method, role, status, payment_status, cree_le`,
+  [nom_complet, email, phone, plan, payment_method, role, status, payment_status]
+);
 
     console.log(`👤 Nouvel utilisateur ajouté : ${email} (mdp temporaire : ${tempPassword})`);
 
