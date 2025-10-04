@@ -286,27 +286,27 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Champs obligatoires manquants" });
     }
 
-    // Valeurs par défaut
-const role = "user";
-const status = "Actif";
-let payment_status;
+    // 👉 Valeurs par défaut sécurisées
+    const role = "user";
+    const status = "Actif";
 
-// Si plan = Premium, l’admin l’ajoute directement comme payé
-if (plan === "Premium") {
-  payment_status = "effectue";
-} else {
-  // Plan Free → pas de paiement attendu
-  payment_status = "none";
-}
+    // 🔒 Forcer payment_status selon plan
+    let payment_status;
+    if (plan === "Premium") {
+      payment_status = "effectue"; // Admin l’ajoute déjà validé
+    } else {
+      payment_status = "none"; // Free → pas de paiement
+    }
 
-const { rows } = await pool.query(
-  `INSERT INTO utilisateurs (nom_complet, email, phone, plan, payment_method, role, status, payment_status)
-   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-   RETURNING id, nom_complet, email, phone, plan, payment_method, role, status, payment_status, cree_le`,
-  [nom_complet, email, phone, plan, payment_method, role, status, payment_status]
-);
+    const { rows } = await pool.query(
+      `INSERT INTO utilisateurs 
+        (nom_complet, email, phone, plan, payment_method, role, status, payment_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, nom_complet, email, phone, plan, payment_method, role, status, payment_status, cree_le`,
+      [nom_complet, email, phone, plan, payment_method, role, status, payment_status]
+    );
 
-    console.log(`👤 Nouvel utilisateur ajouté par admin : ${email}`);
+    console.log(`👤 Nouvel utilisateur ajouté par admin : ${email} (plan: ${plan}, statut paiement: ${payment_status})`);
 
     res.status(201).json({
       message: "✅ Abonné ajouté avec succès",
