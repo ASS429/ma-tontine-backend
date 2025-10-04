@@ -173,15 +173,21 @@ router.put("/:id/activate", requireAuth, async (req, res) => {
 ------------------------ */
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
-    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé aux admins" });
+    if (req.user.role !== "admin") 
+      return res.status(403).json({ error: "Accès réservé aux admins" });
 
-    const { rowCount } = await pool.query(`DELETE FROM utilisateurs WHERE id=$1`, [req.params.id]);
-    if (rowCount === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    // Vérifier si l’utilisateur existe
+    const { rows } = await pool.query(`SELECT id, email FROM utilisateurs WHERE id=$1`, [req.params.id]);
+    if (rows.length === 0) 
+      return res.status(404).json({ error: "Utilisateur introuvable" });
 
-    res.json({ message: "🗑️ Utilisateur supprimé" });
+    // Supprimer → la cascade s’occupe des tontines, membres, etc.
+    await pool.query(`DELETE FROM utilisateurs WHERE id=$1`, [req.params.id]);
+
+    res.json({ message: `🗑️ Utilisateur ${rows[0].email} supprimé avec succès (et toutes ses données liées)` });
   } catch (err) {
     console.error("Erreur suppression utilisateur:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Impossible de supprimer cet utilisateur" });
   }
 });
 
