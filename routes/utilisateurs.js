@@ -10,7 +10,7 @@ const router = express.Router();
 router.get("/me", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, nom_complet, email, role, plan, payment_status, expiration, cree_le
+      `SELECT id, nom_complet, email, role, plan, status, payment_status, expiration, cree_le
        FROM utilisateurs
        WHERE id=$1`,
       [req.user.id]
