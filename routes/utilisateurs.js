@@ -271,4 +271,46 @@ router.post("/:id/reminder", requireAuth, async (req, res) => {
   }
 });
 
+/* -----------------------
+   📌 POST ajouter un nouvel utilisateur (admin uniquement)
+------------------------ */
+router.post("/", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
+    }
+
+    const { nom_complet, email, phone, plan, payment_method } = req.body;
+
+    if (!nom_complet || !email || !phone) {
+      return res.status(400).json({ error: "Champs obligatoires manquants" });
+    }
+
+    // Valeurs par défaut
+    const role = "user";
+    const status = "Actif";
+    const payment_status = plan === "Premium" ? "effectue" : "none";
+
+    // Génération d’un mot de passe aléatoire simple (ex : admin peut le changer plus tard)
+    const tempPassword = Math.random().toString(36).slice(-8);
+
+    const { rows } = await pool.query(
+      `INSERT INTO utilisateurs (nom_complet, email, phone, plan, payment_method, role, status, payment_status, password)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, crypt($9, gen_salt('bf')))
+       RETURNING id, nom_complet, email, phone, plan, payment_method, role, status, payment_status, cree_le`,
+      [nom_complet, email, phone, plan, payment_method, role, status, payment_status, tempPassword]
+    );
+
+    console.log(`👤 Nouvel utilisateur ajouté : ${email} (mdp temporaire : ${tempPassword})`);
+
+    res.status(201).json({
+      message: "✅ Abonné ajouté avec succès",
+      utilisateur: rows[0],
+    });
+  } catch (err) {
+    console.error("Erreur ajout abonné:", err.message);
+    res.status(500).json({ error: "Impossible d’ajouter l’abonné" });
+  }
+});
+
 export default router;
