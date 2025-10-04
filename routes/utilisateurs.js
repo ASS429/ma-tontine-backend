@@ -287,16 +287,24 @@ router.post("/", requireAuth, async (req, res) => {
     }
 
     // Valeurs par défaut
-    const role = "user";
-    const status = "Actif";
-    const payment_status = plan === "Premium" ? "effectue" : "en_attente";
+const role = "user";
+const status = "Actif";
+let payment_status;
 
-    const { rows } = await pool.query(
-      `INSERT INTO utilisateurs (nom_complet, email, phone, plan, payment_method, role, status, payment_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, nom_complet, email, phone, plan, payment_method, role, status, payment_status, cree_le`,
-      [nom_complet, email, phone, plan, payment_method, role, status, payment_status]
-    );
+// Si plan = Premium, l’admin l’ajoute directement comme payé
+if (plan === "Premium") {
+  payment_status = "effectue";
+} else {
+  // Plan Free → pas de paiement attendu
+  payment_status = "none";
+}
+
+const { rows } = await pool.query(
+  `INSERT INTO utilisateurs (nom_complet, email, phone, plan, payment_method, role, status, payment_status)
+   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+   RETURNING id, nom_complet, email, phone, plan, payment_method, role, status, payment_status, cree_le`,
+  [nom_complet, email, phone, plan, payment_method, role, status, payment_status]
+);
 
     console.log(`👤 Nouvel utilisateur ajouté par admin : ${email}`);
 
