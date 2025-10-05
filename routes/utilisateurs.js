@@ -196,21 +196,76 @@ router.delete("/:id", requireAuth, async (req, res) => {
 ------------------------ */
 router.put("/:id/approve", requireAuth, async (req, res) => {
   try {
-    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé aux admins" });
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Accès réservé aux admins" });
+    }
 
-    const { rows } = await pool.query(
-      `UPDATE utilisateurs 
-       SET payment_status='effectue', expiration=NOW() + INTERVAL '30 days'
-       WHERE id=$1 
-       RETURNING id, nom_complet, email, plan, payment_status, expiration`,
+    // 1. Récupérer l’utilisateur
+    const { rows: userRows } = await pool.query(
+      `SELECT id, email, nom_complet, plan, payment_method
+       FROM utilisateurs
+       WHERE id=$1`,
       [req.params.id]
     );
 
-    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
-    res.json({ message: "✅ Abonnement validé", utilisateur: rows[0] });
+    if (userRows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    const user = userRows[0];
+
+    // 2. Mettre à jour l’utilisateur en Premium effectif
+    const { rows: updatedUser } = await pool.query(
+      `UPDATE utilisateurs 
+       SET payment_status='effectue',
+           plan='Premium',
+           expiration=NOW() + INTERVAL '30 days'
+       WHERE id=$1 
+       RETURNING id, nom_complet, email, plan, payment_status, expiration, payment_method`,
+      [req.params.id]
+    );
+
+    // 3. Créer un revenu
+    const montant = 29.99;
+    await pool.query(
+      `INSERT INTO revenus (source, montant, methode, statut, description, utilisateur_id)
+       VALUES ($1, $2, $3, 'effectue', $4, $5)`,
+      [
+        "Abonnement Premium",
+        montant,
+        updatedUser[0].payment_method || "autre",
+        "Paiement Premium validé par admin",
+        user.id
+      ]
+    );
+
+    // 4. Vérifier si un compte existe déjà pour cet utilisateur
+    const { rows: compteRows } = await pool.query(
+      `SELECT id, solde FROM comptes WHERE utilisateur_id=$1 AND type=$2`,
+      [user.id, user.payment_method || "autre"]
+    );
+
+    if (compteRows.length === 0) {
+      // Créer un compte si inexistant
+      await pool.query(
+        `INSERT INTO comptes (utilisateur_id, type, solde)
+         VALUES ($1, $2, $3)`,
+        [user.id, user.payment_method || "autre", montant]
+      );
+    } else {
+      // Sinon, incrémenter le solde
+      await pool.query(
+        `UPDATE comptes
+         SET solde = solde + $1
+         WHERE id=$2`,
+        [montant, compteRows[0].id]
+      );
+    }
+
+    res.json({
+      message: "✅ Abonnement validé + revenu enregistré + compte mis à jour",
+      utilisateur: updatedUser[0]
+    });
   } catch (err) {
-    console.error("Erreur approve:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("Erreur approve Premium:", err.message);
+    res.status(500).json({ error: "Impossible de valider l’abonnement" });
   }
 });
 
