@@ -112,5 +112,27 @@ router.get("/stats", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Impossible de charger les statistiques des revenus" });
   }
 });
+/* =========================================================
+   📋 GET /revenus/transactions → liste complète des revenus
+========================================================= */
+router.get("/transactions", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin")
+      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
+
+    const { rows } = await pool.query(
+      `SELECT id, source AS description, montant AS amount, 
+              methode AS method, statut AS status, cree_le AS date
+       FROM revenus
+       ORDER BY cree_le DESC
+       LIMIT 50`
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("Erreur /revenus/transactions:", err.message);
+    res.status(500).json({ error: "Impossible de charger les transactions" });
+  }
+});
 
 export default router;
