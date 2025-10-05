@@ -113,7 +113,7 @@ router.get("/stats", requireAuth, async (req, res) => {
   }
 });
 /* =========================================================
-   📋 GET /revenus/transactions → liste complète des revenus
+   📋 GET /revenus/transactions → liste formatée
 ========================================================= */
 router.get("/transactions", requireAuth, async (req, res) => {
   try {
@@ -121,14 +121,29 @@ router.get("/transactions", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Accès réservé aux administrateurs" });
 
     const { rows } = await pool.query(
-      `SELECT id, source AS description, montant AS amount, 
-              methode AS method, statut AS status, cree_le AS date
+      `SELECT 
+          id,
+          source AS description,
+          montant,
+          methode,
+          statut,
+          cree_le
        FROM revenus
        ORDER BY cree_le DESC
        LIMIT 50`
     );
 
-    res.json(rows);
+    // 🔹 Transformer côté backend
+    const formatted = rows.map(r => ({
+      id: r.id,
+      description: r.description,
+      amount: Number(r.montant),
+      method: r.methode || "cash",
+      date: new Date(r.cree_le).toLocaleDateString("fr-FR"),
+      type: r.statut === "effectue" ? "income" : "expense"
+    }));
+
+    res.json(formatted);
   } catch (err) {
     console.error("Erreur /revenus/transactions:", err.message);
     res.status(500).json({ error: "Impossible de charger les transactions" });
