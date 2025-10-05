@@ -42,6 +42,7 @@ app.use("/api/stats", statsRoutes);
 app.use("/api/alertes", alertesRoutes);
 app.use("/api/paiements", paiementsRoutes);
 app.use("/api/comptes", comptesRoutes);
+app.use('/revenus', require('./routes/revenus.js'));
 
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
