@@ -13,6 +13,7 @@ import statsRoutes from "./routes/stats.js";
 import alertesRoutes from "./routes/alertes.js";
 import paiementsRoutes from "./routes/paiements.js";
 import comptesRoutes from "./routes/comptes.js";
+import revenusRoutes from "./routes/revenus.js";
 
 dotenv.config();
 const app = express();
@@ -42,7 +43,7 @@ app.use("/api/stats", statsRoutes);
 app.use("/api/alertes", alertesRoutes);
 app.use("/api/paiements", paiementsRoutes);
 app.use("/api/comptes", comptesRoutes);
-app.use('/revenus', require('./routes/revenus.js'));
+app.use("/api/revenus", revenusRoutes);
 
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
