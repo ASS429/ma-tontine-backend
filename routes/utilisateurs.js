@@ -274,21 +274,48 @@ router.put("/:id/approve", requireAuth, async (req, res) => {
 ------------------------ */
 router.put("/:id/reject", requireAuth, async (req, res) => {
   try {
-    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé aux admins" });
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Accès réservé aux admins" });
+    }
 
-    const { rows } = await pool.query(
-      `UPDATE utilisateurs 
-       SET plan='Free', payment_status='rejete', expiration=NULL
-       WHERE id=$1 
-       RETURNING id, nom_complet, email, plan, payment_status, expiration`,
+    // 1. Récupérer l’utilisateur
+    const { rows: userRows } = await pool.query(
+      `SELECT id, email, nom_complet, plan, payment_status 
+       FROM utilisateurs 
+       WHERE id=$1`,
       [req.params.id]
     );
 
-    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
-    res.json({ message: "❌ Demande rejetée", utilisateur: rows[0] });
+    if (userRows.length === 0)
+      return res.status(404).json({ error: "Utilisateur introuvable" });
+
+    const user = userRows[0];
+
+    // 2. Supprimer un éventuel revenu lié à un abonnement Premium
+    await pool.query(
+      `DELETE FROM revenus
+       WHERE utilisateur_id=$1 AND source='Abonnement Premium'`,
+      [user.id]
+    );
+
+    // 3. Repasser en Free avec statut rejeté
+    const { rows: updatedUser } = await pool.query(
+      `UPDATE utilisateurs 
+       SET plan='Free', 
+           payment_status='rejete', 
+           expiration=NULL
+       WHERE id=$1
+       RETURNING id, nom_complet, email, plan, payment_status, expiration`,
+      [user.id]
+    );
+
+    res.json({
+      message: "❌ Demande rejetée, revenu annulé si existant",
+      utilisateur: updatedUser[0]
+    });
   } catch (err) {
-    console.error("Erreur reject:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("Erreur reject Premium:", err.message);
+    res.status(500).json({ error: "Impossible de rejeter l’abonnement" });
   }
 });
 
