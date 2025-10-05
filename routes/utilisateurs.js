@@ -288,6 +288,8 @@ router.post("/", requireAuth, async (req, res) => {
     if (!nom_complet || !email || !phone) {
       return res.status(400).json({ error: "Champs obligatoires manquants" });
     }
+      console.log("🔍 Test Supabase URL:", process.env.SUPABASE_URL);
+console.log("🔍 Test clé:", process.env.SUPABASE_SERVICE_ROLE_KEY ? "OK ✅" : "❌ Manquante");
 
     // ✅ 1. Créer un utilisateur dans Supabase Auth
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
