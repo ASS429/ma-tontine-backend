@@ -274,8 +274,11 @@ router.post("/:id/reminder", requireAuth, async (req, res) => {
 /* -----------------------
    📌 POST ajouter un nouvel utilisateur (admin uniquement)
 ------------------------ */
+import supabaseAdmin from "../supabaseAdmin.js";
+
 router.post("/", requireAuth, async (req, res) => {
   try {
+    // Vérifie que c’est un admin
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Accès réservé aux administrateurs" });
     }
@@ -286,32 +289,45 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Champs obligatoires manquants" });
     }
 
-    // 👉 Valeurs par défaut sécurisées
-    const role = "user";
-    const status = "Actif";
+    // ✅ 1. Créer un utilisateur Auth dans Supabase
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: "123456", // mot de passe par défaut (tu pourras le rendre aléatoire après)
+      email_confirm: true,
+      user_metadata: { full_name: nom_complet }
+    });
 
-    // 🔒 Forcer payment_status selon plan
-    let payment_status;
-    if (plan === "Premium") {
-      payment_status = "effectue"; // Admin l’ajoute déjà validé
-    } else {
-      payment_status = "none"; // Free → pas de paiement
+    if (error) {
+      console.error("Erreur création Auth:", error.message);
+      return res.status(400).json({ error: "Impossible de créer le compte Auth" });
     }
 
-    const { rows } = await pool.query(
-      `INSERT INTO utilisateurs 
-        (nom_complet, email, phone, plan, payment_method, role, status, payment_status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, nom_complet, email, phone, plan, payment_method, role, status, payment_status, cree_le`,
-      [nom_complet, email, phone, plan, payment_method, role, status, payment_status]
+    const authUser = data.user;
+
+    // ✅ 2. Mettre à jour la table "utilisateurs" avec les infos complètes
+    const payment_status = plan === "Premium" ? "effectue" : "none";
+
+    await pool.query(
+      `UPDATE utilisateurs 
+       SET phone=$1, plan=$2, payment_method=$3, role='user', status='Actif', payment_status=$4
+       WHERE id=$5`,
+      [phone, plan, payment_method, payment_status, authUser.id]
     );
 
-    console.log(`👤 Nouvel utilisateur ajouté par admin : ${email} (plan: ${plan}, statut paiement: ${payment_status})`);
-
+    // ✅ 3. Retourner les infos
     res.status(201).json({
-      message: "✅ Abonné ajouté avec succès",
-      utilisateur: rows[0],
+      message: "✅ Abonné créé avec succès (compte activé)",
+      utilisateur: {
+        id: authUser.id,
+        email,
+        nom_complet,
+        phone,
+        plan,
+        payment_method,
+        payment_status
+      }
     });
+
   } catch (err) {
     console.error("Erreur ajout abonné:", err.message);
     res.status(500).json({ error: "Impossible d’ajouter l’abonné" });
