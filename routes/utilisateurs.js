@@ -274,11 +274,11 @@ router.post("/:id/reminder", requireAuth, async (req, res) => {
 /* -----------------------
    📌 POST ajouter un nouvel utilisateur (admin uniquement)
 ------------------------ */
-import supabaseAdmin from "../supabaseAdmin.js";
+import supabaseAdmin from "../supabaseAdmin.js"; // ⬅️ assure-toi d’avoir bien ce fichier
 
 router.post("/", requireAuth, async (req, res) => {
   try {
-    // Vérifie que c’est un admin
+    // ✅ Vérifie si c’est bien un admin connecté
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Accès réservé aux administrateurs" });
     }
@@ -289,34 +289,35 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Champs obligatoires manquants" });
     }
 
-    // ✅ 1. Créer un utilisateur Auth dans Supabase
+    // ✅ 1. Créer un utilisateur dans Supabase Auth
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
-      password: "123456", // mot de passe par défaut (tu pourras le rendre aléatoire après)
+      password: "123456", // mot de passe par défaut (tu pourras le rendre aléatoire ensuite)
       email_confirm: true,
       user_metadata: { full_name: nom_complet }
     });
 
     if (error) {
       console.error("Erreur création Auth:", error.message);
-      return res.status(400).json({ error: "Impossible de créer le compte Auth" });
+      return res.status(400).json({ error: "Impossible de créer le compte Supabase Auth" });
     }
 
     const authUser = data.user;
 
-    // ✅ 2. Mettre à jour la table "utilisateurs" avec les infos complètes
+    // ✅ 2. Déterminer le statut de paiement
     const payment_status = plan === "Premium" ? "effectue" : "none";
 
+    // ✅ 3. Mettre à jour la table utilisateurs (le trigger a déjà créé une ligne)
     await pool.query(
-      `UPDATE utilisateurs 
+      `UPDATE utilisateurs
        SET phone=$1, plan=$2, payment_method=$3, role='user', status='Actif', payment_status=$4
        WHERE id=$5`,
       [phone, plan, payment_method, payment_status, authUser.id]
     );
 
-    // ✅ 3. Retourner les infos
+    // ✅ 4. Retourner la réponse finale
     res.status(201).json({
-      message: "✅ Abonné créé avec succès (compte activé)",
+      message: "✅ Abonné créé avec succès (compte actif)",
       utilisateur: {
         id: authUser.id,
         email,
@@ -324,14 +325,16 @@ router.post("/", requireAuth, async (req, res) => {
         phone,
         plan,
         payment_method,
-        payment_status
-      }
+        payment_status,
+      },
     });
 
+    console.log(`👤 Nouvel abonné créé : ${email} (${plan})`);
   } catch (err) {
     console.error("Erreur ajout abonné:", err.message);
     res.status(500).json({ error: "Impossible d’ajouter l’abonné" });
   }
 });
+
 
 export default router;
