@@ -86,4 +86,54 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+/* =========================================================
+   💳 GET /api/comptes/admin → Comptes de l'administrateur
+========================================================= */
+router.get("/admin", async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Accès réservé à l’administrateur" });
+    }
+
+    const { period } = req.query; // daily, weekly, monthly, all
+    let condition = "TRUE";
+
+    if (period === "daily") condition = "DATE(cree_le) = CURRENT_DATE";
+    else if (period === "weekly") condition = "DATE_PART('week', cree_le) = DATE_PART('week', CURRENT_DATE)";
+    else if (period === "monthly") condition = "DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE)";
+
+    // 🔸 Récupérer les comptes du super admin connecté
+    const { rows } = await pool.query(
+      `
+      SELECT type, COALESCE(SUM(solde), 0) AS total
+      FROM comptes
+      WHERE utilisateur_id = $1
+        AND ${condition}
+      GROUP BY type
+      `,
+      [req.user.id]
+    );
+
+    // 🔹 Structurer les résultats
+    const data = {
+      orange: 0,
+      wave: 0,
+      cash: 0,
+      total: 0,
+    };
+
+    rows.forEach((r) => {
+      if (r.type === "orange_money") data.orange = Number(r.total);
+      else if (r.type === "wave") data.wave = Number(r.total);
+      else if (r.type === "especes") data.cash = Number(r.total);
+      data.total += Number(r.total);
+    });
+
+    res.json(data);
+  } catch (err) {
+    console.error("❌ Erreur /api/comptes/admin:", err.message);
+    res.status(500).json({ error: "Impossible de charger les comptes admin" });
+  }
+});
+
 export default router;
