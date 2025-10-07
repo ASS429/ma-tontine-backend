@@ -6,11 +6,13 @@ import pool from "../db.js";
 const router = express.Router();
 router.use(requireAuth);
 
-// 📌 GET tous les comptes de l’utilisateur
+/* =========================================================
+   👤 GET /api/comptes → Comptes de l'utilisateur courant
+========================================================= */
 router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM comptes WHERE utilisateur_id=$1 ORDER BY cree_le ASC`,
+      `SELECT * FROM comptes WHERE utilisateur_id = $1 ORDER BY cree_le ASC`,
       [req.user.id]
     );
     res.json(rows);
@@ -20,7 +22,9 @@ router.get("/", async (req, res) => {
   }
 });
 
-// 📌 POST ajouter un compte
+/* =========================================================
+   ➕ POST /api/comptes → Ajouter un compte
+========================================================= */
 router.post("/", async (req, res) => {
   try {
     const { type, solde } = req.body;
@@ -28,7 +32,7 @@ router.post("/", async (req, res) => {
 
     const { rows } = await pool.query(
       `INSERT INTO comptes (utilisateur_id, type, solde)
-       VALUES ($1,$2,$3)
+       VALUES ($1, $2, $3)
        RETURNING *`,
       [req.user.id, type, solde || 0]
     );
@@ -40,7 +44,9 @@ router.post("/", async (req, res) => {
   }
 });
 
-// 📌 PUT mettre à jour un solde
+/* =========================================================
+   ✏️ PUT /api/comptes/:id → Mettre à jour un solde
+========================================================= */
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -48,15 +54,14 @@ router.put("/:id", async (req, res) => {
 
     const { rows } = await pool.query(
       `UPDATE comptes
-       SET solde=$1
-       WHERE id=$2 AND utilisateur_id=$3
+       SET solde = $1
+       WHERE id = $2 AND utilisateur_id = $3
        RETURNING *`,
       [solde, id, req.user.id]
     );
 
-    if (rows.length === 0) {
+    if (rows.length === 0)
       return res.status(404).json({ error: "Compte introuvable" });
-    }
 
     res.json(rows[0]);
   } catch (err) {
@@ -65,19 +70,20 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// 📌 DELETE supprimer un compte
+/* =========================================================
+   ❌ DELETE /api/comptes/:id → Supprimer un compte
+========================================================= */
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
     const { rowCount } = await pool.query(
-      `DELETE FROM comptes WHERE id=$1 AND utilisateur_id=$2`,
+      `DELETE FROM comptes WHERE id = $1 AND utilisateur_id = $2`,
       [id, req.user.id]
     );
 
-    if (rowCount === 0) {
+    if (rowCount === 0)
       return res.status(404).json({ error: "Compte introuvable" });
-    }
 
     res.json({ success: true, message: "Compte supprimé ✅" });
   } catch (err) {
@@ -87,7 +93,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 /* =========================================================
-   💳 GET /api/comptes/admin → Comptes de l'administrateur
+   👑 GET /api/comptes/admin → Comptes de l'administrateur
 ========================================================= */
 router.get("/admin", async (req, res) => {
   try {
@@ -98,38 +104,26 @@ router.get("/admin", async (req, res) => {
     const { period } = req.query; // daily, weekly, monthly, all
     let condition = "TRUE";
 
-    if (period === "daily") condition = "DATE(cree_le) = CURRENT_DATE";
-    else if (period === "weekly") condition = "DATE_PART('week', cree_le) = DATE_PART('week', CURRENT_DATE)";
-    else if (period === "monthly") condition = "DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE)";
+    if (period === "daily") {
+      condition = "DATE(cree_le) = CURRENT_DATE";
+    } else if (period === "weekly") {
+      condition = "DATE_PART('week', cree_le) = DATE_PART('week', CURRENT_DATE)";
+    } else if (period === "monthly") {
+      condition = "DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE)";
+    }
 
-    // 🔸 Récupérer les comptes du super admin connecté
+    // 🔹 Récupère les comptes réels de l’admin connecté
     const { rows } = await pool.query(
       `
-      SELECT type, COALESCE(SUM(solde), 0) AS total
+      SELECT id, type, solde, cree_le
       FROM comptes
-      WHERE utilisateur_id = $1
-        AND ${condition}
-      GROUP BY type
+      WHERE utilisateur_id = $1 AND ${condition}
+      ORDER BY cree_le ASC
       `,
       [req.user.id]
     );
 
-    // 🔹 Structurer les résultats
-    const data = {
-      orange: 0,
-      wave: 0,
-      cash: 0,
-      total: 0,
-    };
-
-    rows.forEach((r) => {
-      if (r.type === "orange_money") data.orange = Number(r.total);
-      else if (r.type === "wave") data.wave = Number(r.total);
-      else if (r.type === "especes") data.cash = Number(r.total);
-      data.total += Number(r.total);
-    });
-
-    res.json(data);
+    res.json(rows);
   } catch (err) {
     console.error("❌ Erreur /api/comptes/admin:", err.message);
     res.status(500).json({ error: "Impossible de charger les comptes admin" });
