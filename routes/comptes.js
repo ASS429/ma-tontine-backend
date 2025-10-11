@@ -93,7 +93,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 /* =========================================================
-   👑 GET /api/comptes/admin → Comptes de l'administrateur
+   👑 GET /api/comptes/admin → Comptes de l'administrateur (filtrés)
 ========================================================= */
 router.get("/admin", async (req, res) => {
   try {
@@ -104,26 +104,48 @@ router.get("/admin", async (req, res) => {
     const { period } = req.query; // daily, weekly, monthly, all
     let condition = "TRUE";
 
+    // 🔹 Périodes dynamiques
     if (period === "daily") {
-      condition = "DATE(cree_le) = CURRENT_DATE";
+      condition = `DATE(cree_le) = CURRENT_DATE`;
     } else if (period === "weekly") {
-      condition = "DATE_PART('week', cree_le) = DATE_PART('week', CURRENT_DATE)";
+      condition = `DATE_PART('week', cree_le) = DATE_PART('week', CURRENT_DATE)
+                   AND DATE_PART('year', cree_le) = DATE_PART('year', CURRENT_DATE)`;
     } else if (period === "monthly") {
-      condition = "DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE)";
+      condition = `DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE)
+                   AND DATE_PART('year', cree_le) = DATE_PART('year', CURRENT_DATE)`;
     }
 
-    // 🔹 Récupère les comptes réels de l’admin connecté
+    // 🔹 Récupération des comptes admin selon la période
     const { rows } = await pool.query(
       `
       SELECT id, type, solde, cree_le
       FROM comptes
-      WHERE utilisateur_id = $1 AND ${condition}
+      WHERE utilisateur_id = $1
+        AND ${condition}
       ORDER BY cree_le ASC
       `,
       [req.user.id]
     );
 
-    res.json(rows);
+    if (rows.length === 0) {
+      return res.json([]);
+    }
+
+    // 🔹 Optionnel : Calculer des totaux groupés par type
+    const summary = {
+      orange_money: 0,
+      wave: 0,
+      especes: 0,
+      total: 0,
+    };
+
+    rows.forEach((r) => {
+      const type = r.type;
+      summary[type] = Number(r.solde);
+      summary.total += Number(r.solde);
+    });
+
+    res.json(rows); // 🔹 ou bien => res.json(summary) si tu veux des totaux
   } catch (err) {
     console.error("❌ Erreur /api/comptes/admin:", err.message);
     res.status(500).json({ error: "Impossible de charger les comptes admin" });
