@@ -16,6 +16,7 @@ import comptesRoutes from "./routes/comptes.js";
 import revenusRoutes from "./routes/revenus.js";
 import revenusAdminRoutes from "./routes/revenusAdmin.js";
 import comptesAdminRoutes from "./routes/comptesAdmin.js";
+import adminAlertesRoutes from "./routes/adminAlertes.js";
 
 dotenv.config();
 const app = express();
@@ -48,6 +49,7 @@ app.use("/api/comptes", comptesRoutes);
 app.use("/api/revenus", revenusRoutes);
 app.use("/api/admin/revenus", revenusAdminRoutes);
 app.use("/api/admin/comptes", comptesAdminRoutes);
+app.use("/api/admin/alertes", adminAlertesRoutes);
 
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
