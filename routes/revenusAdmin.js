@@ -5,7 +5,63 @@ import { requireAuth } from "../middleware/auth.js";
 const router = express.Router();
 
 /* =========================================================
-   📈 GET revenus admin (statistiques)
+   📦 GET /admin/revenus → Liste complète (admin uniquement)
+========================================================= */
+router.get("/", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin")
+      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
+
+    const { period } = req.query;
+    let condition = "TRUE";
+
+    if (period === "daily") condition = "DATE(cree_le) = CURRENT_DATE";
+    else if (period === "weekly") condition = "DATE_PART('week', cree_le) = DATE_PART('week', CURRENT_DATE)";
+    else if (period === "monthly") condition = "DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE)";
+
+    const { rows } = await pool.query(`
+      SELECT id, source, montant, methode, statut, description, cree_le
+      FROM revenus_admin
+      WHERE ${condition}
+      ORDER BY cree_le DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("Erreur GET /admin/revenus:", err.message);
+    res.status(500).json({ error: "Impossible de charger les revenus admin" });
+  }
+});
+
+/* =========================================================
+   💰 POST /admin/revenus → Ajouter un revenu (admin uniquement)
+========================================================= */
+router.post("/", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin")
+      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
+
+    const { source, montant, methode, statut, description } = req.body;
+
+    if (!source || !montant)
+      return res.status(400).json({ error: "Champs obligatoires manquants" });
+
+    const { rows } = await pool.query(
+      `INSERT INTO revenus_admin (source, montant, methode, statut, description, admin_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [source, montant, methode || "autre", statut || "effectue", description || null, req.user.id]
+    );
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error("Erreur ajout revenu_admin:", err.message);
+    res.status(500).json({ error: "Impossible d’ajouter le revenu" });
+  }
+});
+
+/* =========================================================
+   📊 GET /admin/revenus/stats → Statistiques globales admin
 ========================================================= */
 router.get("/stats", requireAuth, async (req, res) => {
   try {
@@ -52,40 +108,13 @@ router.get("/stats", requireAuth, async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Erreur /revenus_admin/stats:", err.message);
-    res.status(500).json({ error: "Impossible de charger les statistiques" });
+    console.error("Erreur /admin/revenus/stats:", err.message);
+    res.status(500).json({ error: "Impossible de charger les statistiques des revenus" });
   }
 });
 
 /* =========================================================
-   💰 POST ajouter un revenu (admin)
-========================================================= */
-router.post("/", requireAuth, async (req, res) => {
-  try {
-    if (req.user.role !== "admin")
-      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
-
-    const { source, montant, methode, statut, description } = req.body;
-
-    if (!source || !montant)
-      return res.status(400).json({ error: "Champs obligatoires manquants" });
-
-    const { rows } = await pool.query(
-      `INSERT INTO revenus_admin (source, montant, methode, statut, description, admin_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [source, montant, methode || "autre", statut || "effectue", description || null, req.user.id]
-    );
-
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error("Erreur ajout revenu_admin:", err.message);
-    res.status(500).json({ error: "Impossible d’ajouter le revenu" });
-  }
-});
-
-/* =========================================================
-   📋 GET /revenus_admin/transactions → liste formatée
+   📋 GET /admin/revenus/transactions → Liste formatée
 ========================================================= */
 router.get("/transactions", requireAuth, async (req, res) => {
   try {
@@ -110,8 +139,8 @@ router.get("/transactions", requireAuth, async (req, res) => {
 
     res.json(formatted);
   } catch (err) {
-    console.error("Erreur /revenus_admin/transactions:", err.message);
-    res.status(500).json({ error: "Impossible de charger les transactions" });
+    console.error("Erreur /admin/revenus/transactions:", err.message);
+    res.status(500).json({ error: "Impossible de charger les transactions admin" });
   }
 });
 
