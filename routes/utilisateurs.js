@@ -214,6 +214,7 @@ router.put("/:id/approve", requireAuth, async (req, res) => {
 
     const user = userRows[0];
     const montant = 29.99;
+    const methode = user.payment_method || "autre";
 
     // 2️⃣ Mettre à jour son statut d’abonnement
     const { rows: updatedUser } = await pool.query(
@@ -223,88 +224,83 @@ router.put("/:id/approve", requireAuth, async (req, res) => {
            expiration=NOW() + INTERVAL '30 days'
        WHERE id=$1
        RETURNING id, nom_complet, email, plan, payment_status, expiration, payment_method`,
-      [req.params.id]
+      [user.id]
     );
 
-    // 3️⃣ Enregistrer un revenu utilisateur (revenus)
+    // 3️⃣ Enregistrer un revenu utilisateur
     await pool.query(
       `INSERT INTO revenus (source, montant, methode, statut, description, utilisateur_id)
        VALUES ($1, $2, $3, 'effectue', $4, $5)`,
       [
         "Abonnement Premium",
         montant,
-        user.payment_method || "autre",
+        methode,
         "Paiement Premium validé par administrateur",
         user.id
       ]
     );
 
-    // 4️⃣ Créer ou mettre à jour le compte utilisateur (table comptes)
+    // 4️⃣ Créer ou mettre à jour le compte utilisateur
     const { rows: compteRows } = await pool.query(
       `SELECT id FROM comptes WHERE utilisateur_id=$1 AND type=$2`,
-      [user.id, user.payment_method || "autre"]
+      [user.id, methode]
     );
 
     if (compteRows.length === 0) {
       await pool.query(
         `INSERT INTO comptes (utilisateur_id, type, solde)
-         VALUES ($1, $2, 0)`,
-        [user.id, user.payment_method || "autre"]
+         VALUES ($1, $2, $3)`,
+        [user.id, methode, 0]
       );
     }
 
-    // 5️⃣ Créditer le compte admin global (comptes_admin)
-    const { rows: adminRows } = await pool.query(
-      `SELECT id FROM utilisateurs WHERE role='admin' LIMIT 1`
+    // ✅ 5️⃣ Créditer les comptes admin (utilise le vrai admin connecté)
+    const adminId = req.user.id;
+
+    const { rows: compteAdminRows } = await pool.query(
+      `SELECT id FROM comptes_admin WHERE admin_id=$1 AND type=$2`,
+      [adminId, methode]
     );
 
-    if (adminRows.length > 0) {
-      const adminId = adminRows[0].id;
-
-      // Vérifie si le compte admin existe
-      const { rows: compteAdminRows } = await pool.query(
-        `SELECT id FROM comptes_admin WHERE admin_id=$1 AND type=$2`,
-        [adminId, user.payment_method || "wave"]
-      );
-
-      if (compteAdminRows.length === 0) {
-        await pool.query(
-          `INSERT INTO comptes_admin (admin_id, type, solde)
-           VALUES ($1, $2, $3)`,
-          [adminId, user.payment_method || "wave", montant]
-        );
-      } else {
-        await pool.query(
-          `UPDATE comptes_admin
-           SET solde = solde + $1
-           WHERE id=$2`,
-          [montant, compteAdminRows[0].id]
-        );
-      }
-
-      // Enregistrer aussi dans revenus_admin
+    if (compteAdminRows.length === 0) {
       await pool.query(
-        `INSERT INTO revenus_admin (source, montant, methode, statut, description, admin_id)
-         VALUES ($1, $2, $3, 'effectue', $4, $5)`,
-        [
-          "Abonnement Premium",
-          montant,
-          user.payment_method || "autre",
-          `Abonnement validé pour ${user.email}`,
-          adminId
-        ]
+        `INSERT INTO comptes_admin (admin_id, type, solde)
+         VALUES ($1, $2, $3)`,
+        [adminId, methode, montant]
+      );
+    } else {
+      await pool.query(
+        `UPDATE comptes_admin
+         SET solde = solde + $1
+         WHERE id=$2`,
+        [montant, compteAdminRows[0].id]
       );
     }
 
+    // 6️⃣ Enregistrer aussi dans revenus_admin
+    await pool.query(
+      `INSERT INTO revenus_admin (source, montant, methode, statut, description, admin_id)
+       VALUES ($1, $2, $3, 'effectue', $4, $5)`,
+      [
+        "Abonnement Premium",
+        montant,
+        methode,
+        `Abonnement validé pour ${user.email}`,
+        adminId
+      ]
+    );
+
     res.json({
-      message: "✅ Abonnement Premium validé, comptes mis à jour (utilisateur + admin)",
+      message: "✅ Abonnement Premium validé et comptes mis à jour (utilisateur + admin)",
       utilisateur: updatedUser[0]
     });
+
   } catch (err) {
     console.error("Erreur approve Premium:", err.message);
     res.status(500).json({ error: "Impossible de valider l’abonnement" });
   }
 });
+
 
 /* -----------------------
    📌 PUT rejeter une demande Premium
