@@ -512,6 +512,66 @@ router.get("/stats", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Impossible de charger les statistiques utilisateurs" });
   }
 });
+/* =========================================================
+   📊 GET /utilisateurs/dashboard → Statistiques du tableau de bord admin
+========================================================= */
+router.get("/dashboard", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
+    }
 
+    const query = `
+      WITH
+      total_abonnes AS (
+        SELECT COUNT(*) AS total FROM utilisateurs
+      ),
+      abonnes_actifs AS (
+        SELECT COUNT(*) AS total FROM utilisateurs
+        WHERE plan='Premium' AND expiration > NOW()
+      ),
+      revenus_mensuels AS (
+        SELECT COALESCE(SUM(montant), 0) AS total
+        FROM revenus_admin
+        WHERE DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE)
+          AND DATE_PART('year', cree_le) = DATE_PART('year', CURRENT_DATE)
+      ),
+      revenus_prec_mois AS (
+        SELECT COALESCE(SUM(montant), 0) AS total
+        FROM revenus_admin
+        WHERE DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE - INTERVAL '1 month')
+          AND DATE_PART('year', cree_le) = DATE_PART('year', CURRENT_DATE - INTERVAL '1 month')
+      ),
+      alertes AS (
+        SELECT COUNT(*) AS total FROM alertes_admin WHERE statut='en_attente'
+      )
+      SELECT 
+        (SELECT total FROM total_abonnes) AS total_abonnes,
+        (SELECT total FROM abonnes_actifs) AS abonnes_actifs,
+        (SELECT total FROM revenus_mensuels) AS revenus_mensuels,
+        (SELECT total FROM revenus_prec_mois) AS revenus_prec_mois,
+        (SELECT total FROM alertes) AS alertes_paiement;
+    `;
+
+    const { rows } = await pool.query(query);
+    const stats = rows[0];
+
+    // Calcul croissance revenus (%)
+    const growth = stats.revenus_prec_mois > 0
+      ? ((stats.revenus_mensuels - stats.revenus_prec_mois) / stats.revenus_prec_mois * 100).toFixed(1)
+      : "100.0";
+
+    res.json({
+      total_abonnes: Number(stats.total_abonnes),
+      abonnes_actifs: Number(stats.abonnes_actifs),
+      revenus_mensuels: Number(stats.revenus_mensuels),
+      croissance_revenus: Number(growth),
+      alertes_paiement: Number(stats.alertes_paiement)
+    });
+  } catch (err) {
+    console.error("Erreur /utilisateurs/dashboard:", err.message);
+    res.status(500).json({ error: "Impossible de charger les stats du tableau de bord" });
+  }
+});
 
 export default router;
