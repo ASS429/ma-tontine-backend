@@ -200,67 +200,104 @@ router.put("/:id/approve", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Accès réservé aux admins" });
     }
 
-    // 1. Récupérer l’utilisateur
+    // 1️⃣ Récupérer l’utilisateur à valider
     const { rows: userRows } = await pool.query(
-      `SELECT id, email, nom_complet, plan, payment_method
-       FROM utilisateurs
+      `SELECT id, email, nom_complet, plan, payment_method 
+       FROM utilisateurs 
        WHERE id=$1`,
       [req.params.id]
     );
 
-    if (userRows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
-    const user = userRows[0];
+    if (userRows.length === 0) {
+      return res.status(404).json({ error: "Utilisateur introuvable" });
+    }
 
-    // 2. Mettre à jour l’utilisateur en Premium effectif
+    const user = userRows[0];
+    const montant = 29.99;
+
+    // 2️⃣ Mettre à jour son statut d’abonnement
     const { rows: updatedUser } = await pool.query(
       `UPDATE utilisateurs 
        SET payment_status='effectue',
            plan='Premium',
            expiration=NOW() + INTERVAL '30 days'
-       WHERE id=$1 
+       WHERE id=$1
        RETURNING id, nom_complet, email, plan, payment_status, expiration, payment_method`,
       [req.params.id]
     );
 
-    // 3. Créer un revenu
-    const montant = 29.99;
+    // 3️⃣ Enregistrer un revenu utilisateur (revenus)
     await pool.query(
       `INSERT INTO revenus (source, montant, methode, statut, description, utilisateur_id)
        VALUES ($1, $2, $3, 'effectue', $4, $5)`,
       [
         "Abonnement Premium",
         montant,
-        updatedUser[0].payment_method || "autre",
-        "Paiement Premium validé par admin",
+        user.payment_method || "autre",
+        "Paiement Premium validé par administrateur",
         user.id
       ]
     );
 
-    // 4. Vérifier si un compte existe déjà pour cet utilisateur
+    // 4️⃣ Créer ou mettre à jour le compte utilisateur (table comptes)
     const { rows: compteRows } = await pool.query(
-      `SELECT id, solde FROM comptes WHERE utilisateur_id=$1 AND type=$2`,
+      `SELECT id FROM comptes WHERE utilisateur_id=$1 AND type=$2`,
       [user.id, user.payment_method || "autre"]
     );
 
     if (compteRows.length === 0) {
-      // Créer un compte si inexistant
       await pool.query(
         `INSERT INTO comptes (utilisateur_id, type, solde)
-         VALUES ($1, $2, $3)`,
-        [user.id, user.payment_method || "autre", montant]
+         VALUES ($1, $2, 0)`,
+        [user.id, user.payment_method || "autre"]
       );
-    } else {
-      // Sinon, incrémenter le solde
+    }
+
+    // 5️⃣ Créditer le compte admin global (comptes_admin)
+    const { rows: adminRows } = await pool.query(
+      `SELECT id FROM utilisateurs WHERE role='admin' LIMIT 1`
+    );
+
+    if (adminRows.length > 0) {
+      const adminId = adminRows[0].id;
+
+      // Vérifie si le compte admin existe
+      const { rows: compteAdminRows } = await pool.query(
+        `SELECT id FROM comptes_admin WHERE admin_id=$1 AND type=$2`,
+        [adminId, user.payment_method || "wave"]
+      );
+
+      if (compteAdminRows.length === 0) {
+        await pool.query(
+          `INSERT INTO comptes_admin (admin_id, type, solde)
+           VALUES ($1, $2, $3)`,
+          [adminId, user.payment_method || "wave", montant]
+        );
+      } else {
+        await pool.query(
+          `UPDATE comptes_admin
+           SET solde = solde + $1
+           WHERE id=$2`,
+          [montant, compteAdminRows[0].id]
+        );
+      }
+
+      // Enregistrer aussi dans revenus_admin
       await pool.query(
-        `UPDATE comptes
-         SET solde = solde + $1
-         WHERE id=$2`,
-        [montant, compteRows[0].id]
+        `INSERT INTO revenus_admin (source, montant, methode, statut, description, admin_id)
+         VALUES ($1, $2, $3, 'effectue', $4, $5)`,
+        [
+          "Abonnement Premium",
+          montant,
+          user.payment_method || "autre",
+          `Abonnement validé pour ${user.email}`,
+          adminId
+        ]
       );
     }
 
     res.json({
-      message: "✅ Abonnement validé + revenu enregistré + compte mis à jour",
+      message: "✅ Abonnement Premium validé, comptes mis à jour (utilisateur + admin)",
       utilisateur: updatedUser[0]
     });
   } catch (err) {
