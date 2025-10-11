@@ -211,55 +211,77 @@ router.delete("/:id", requireAuth, async (req, res) => {
 ------------------------ */
 router.put("/:id/approve", requireAuth, async (req, res) => {
   try {
+    // 🔒 Vérifie que seul un admin peut valider
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Accès réservé aux admins" });
     }
 
+    // 🔹 On récupère le montant envoyé (sinon 5000 par défaut)
     const { montant: montantBody } = req.body;
 
+    // 1️⃣ Récupération de l’utilisateur à valider
     const { rows: userRows } = await pool.query(
-      `SELECT id, email, nom_complet, plan, payment_method 
-       FROM utilisateurs 
-       WHERE id=$1`,
+      `SELECT id, email, nom_complet, plan, payment_method
+       FROM utilisateurs
+       WHERE id = $1`,
       [req.params.id]
     );
 
-    if (userRows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    if (userRows.length === 0) {
+      return res.status(404).json({ error: "Utilisateur introuvable" });
+    }
 
     const user = userRows[0];
-    const montant = montantBody || 5000; // 🔹 par défaut 5000 FCFA si non fourni
+    const montant = montantBody || 5000; // 💰 5000 FCFA par défaut
     const methode = user.payment_method || "autre";
 
-    // ✅ 1. Valider l’abonnement
+    // 2️⃣ Validation de l’abonnement
     const { rows: updatedUser } = await pool.query(
-      `UPDATE utilisateurs 
-       SET payment_status='effectue',
-           plan='Premium',
-           expiration=NOW() + INTERVAL '30 days'
-       WHERE id=$1
+      `UPDATE utilisateurs
+       SET payment_status = 'effectue',
+           plan = 'Premium',
+           expiration = NOW() + INTERVAL '30 days'
+       WHERE id = $1
        RETURNING id, nom_complet, email, plan, payment_status, expiration, payment_method`,
       [user.id]
     );
 
-    // ✅ 2. Mettre à jour revenus (passer en "effectue")
-    await pool.query(
-      `UPDATE revenus 
-       SET statut='effectue', description='Paiement validé par admin'
-       WHERE utilisateur_id=$1 AND source='Demande Abonnement Premium'`,
+    // 3️⃣ Vérifie s’il y a déjà une ligne de revenus correspondante
+    const { rowCount: revenusExist } = await pool.query(
+      `SELECT 1 FROM revenus WHERE utilisateur_id = $1 AND source = 'Abonnement Premium'`,
       [user.id]
     );
 
-    // ✅ 3. Créer revenu admin
-    const adminId = req.user.id;
-    await pool.query(
-      `INSERT INTO revenus_admin (source, montant, methode, statut, description, admin_id)
-       VALUES ($1, $2, $3, 'effectue', $4, $5)`,
-      ["Abonnement Premium", montant, methode, `Abonnement validé pour ${user.email}`, adminId]
-    );
+    if (revenusExist === 0) {
+      // 👉 Créer un nouveau revenu si absent
+      await pool.query(
+        `INSERT INTO revenus (source, montant, methode, statut, description, utilisateur_id)
+         VALUES ($1, $2, $3, 'effectue', $4, $5)`,
+        [
+          "Abonnement Premium",
+          montant,
+          methode,
+          "Paiement Premium validé par administrateur",
+          user.id
+        ]
+      );
+    } else {
+      // 👉 Sinon mettre à jour le revenu existant
+      await pool.query(
+        `UPDATE revenus
+         SET statut = 'effectue',
+             montant = $2,
+             methode = $3,
+             description = 'Paiement Premium validé par administrateur'
+         WHERE utilisateur_id = $1 AND source = 'Abonnement Premium'`,
+        [user.id, montant, methode]
+      );
+    }
 
-    // ✅ 4. Créditer compte admin
+    // 4️⃣ Créditer ou créer le compte admin
+    const adminId = req.user.id;
     const { rows: compteAdminRows } = await pool.query(
-      `SELECT id FROM comptes_admin WHERE admin_id=$1 AND type=$2`,
+      `SELECT id FROM comptes_admin WHERE admin_id = $1 AND type = $2`,
       [adminId, methode]
     );
 
@@ -271,15 +293,32 @@ router.put("/:id/approve", requireAuth, async (req, res) => {
       );
     } else {
       await pool.query(
-        `UPDATE comptes_admin SET solde = solde + $1 WHERE id=$2`,
+        `UPDATE comptes_admin
+         SET solde = solde + $1
+         WHERE id = $2`,
         [montant, compteAdminRows[0].id]
       );
     }
 
+    // 5️⃣ Enregistrer le revenu admin
+    await pool.query(
+      `INSERT INTO revenus_admin (source, montant, methode, statut, description, admin_id)
+       VALUES ($1, $2, $3, 'effectue', $4, $5)`,
+      [
+        "Abonnement Premium",
+        montant,
+        methode,
+        `Abonnement validé pour ${user.email}`,
+        adminId
+      ]
+    );
+
+    // ✅ Réponse finale
     res.json({
-      message: "✅ Abonnement Premium validé et comptes mis à jour",
-      utilisateur: updatedUser[0]
+      message: "✅ Abonnement Premium validé et comptes mis à jour (utilisateur + admin)",
+      utilisateur: updatedUser[0],
     });
+
   } catch (err) {
     console.error("Erreur approve Premium:", err.message);
     res.status(500).json({ error: "Impossible de valider l’abonnement" });
