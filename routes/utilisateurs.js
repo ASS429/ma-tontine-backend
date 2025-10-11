@@ -526,9 +526,19 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       total_abonnes AS (
         SELECT COUNT(*) AS total FROM utilisateurs
       ),
+      total_abonnes_prec_mois AS (
+        SELECT COUNT(*) AS total FROM utilisateurs
+        WHERE DATE_PART('month', cree_le) = DATE_PART('month', CURRENT_DATE - INTERVAL '1 month')
+      ),
       abonnes_actifs AS (
         SELECT COUNT(*) AS total FROM utilisateurs
         WHERE plan='Premium' AND expiration > NOW()
+      ),
+      abonnes_actifs_prec_mois AS (
+        SELECT COUNT(*) AS total FROM utilisateurs
+        WHERE plan='Premium' AND expiration BETWEEN 
+          DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') 
+          AND DATE_TRUNC('month', CURRENT_DATE)
       ),
       revenus_mensuels AS (
         SELECT COALESCE(SUM(montant), 0) AS total
@@ -547,7 +557,9 @@ router.get("/dashboard", requireAuth, async (req, res) => {
       )
       SELECT 
         (SELECT total FROM total_abonnes) AS total_abonnes,
+        (SELECT total FROM total_abonnes_prec_mois) AS total_abonnes_prec_mois,
         (SELECT total FROM abonnes_actifs) AS abonnes_actifs,
+        (SELECT total FROM abonnes_actifs_prec_mois) AS abonnes_actifs_prec_mois,
         (SELECT total FROM revenus_mensuels) AS revenus_mensuels,
         (SELECT total FROM revenus_prec_mois) AS revenus_prec_mois,
         (SELECT total FROM alertes) AS alertes_paiement;
@@ -556,16 +568,26 @@ router.get("/dashboard", requireAuth, async (req, res) => {
     const { rows } = await pool.query(query);
     const stats = rows[0];
 
-    // Calcul croissance revenus (%)
-    const growth = stats.revenus_prec_mois > 0
+    // Calculs des croissances (%)
+    const croissanceAbonnes = stats.total_abonnes_prec_mois > 0
+      ? ((stats.total_abonnes - stats.total_abonnes_prec_mois) / stats.total_abonnes_prec_mois * 100).toFixed(1)
+      : 100.0;
+
+    const croissanceActifs = stats.abonnes_actifs_prec_mois > 0
+      ? ((stats.abonnes_actifs - stats.abonnes_actifs_prec_mois) / stats.abonnes_actifs_prec_mois * 100).toFixed(1)
+      : 100.0;
+
+    const croissanceRevenus = stats.revenus_prec_mois > 0
       ? ((stats.revenus_mensuels - stats.revenus_prec_mois) / stats.revenus_prec_mois * 100).toFixed(1)
-      : "100.0";
+      : 100.0;
 
     res.json({
       total_abonnes: Number(stats.total_abonnes),
       abonnes_actifs: Number(stats.abonnes_actifs),
       revenus_mensuels: Number(stats.revenus_mensuels),
-      croissance_revenus: Number(growth),
+      croissance_abonnes: Number(croissanceAbonnes),
+      croissance_actifs: Number(croissanceActifs),
+      croissance_revenus: Number(croissanceRevenus),
       alertes_paiement: Number(stats.alertes_paiement)
     });
   } catch (err) {
@@ -573,5 +595,6 @@ router.get("/dashboard", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Impossible de charger les stats du tableau de bord" });
   }
 });
+
 
 export default router;
