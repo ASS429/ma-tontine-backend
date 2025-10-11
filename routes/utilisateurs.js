@@ -475,6 +475,43 @@ console.log("🔍 Test clé:", process.env.SUPABASE_SERVICE_ROLE_KEY ? "OK ✅" 
     res.status(500).json({ error: "Impossible d’ajouter l’abonné" });
   }
 });
+/* =========================================================
+   📊 GET /utilisateurs/stats → Statistiques globales utilisateurs
+========================================================= */
+router.get("/stats", requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Accès réservé aux administrateurs" });
+    }
+
+    const { rows } = await pool.query(`
+      SELECT 
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE plan='Premium') AS premium,
+        COUNT(*) FILTER (WHERE plan='Premium' AND expiration > NOW()) AS actifs
+      FROM utilisateurs
+    `);
+
+    const stats = rows[0];
+    const total = Number(stats.total);
+    const premium = Number(stats.premium);
+    const actifs = Number(stats.actifs);
+
+    const tauxConversion = total > 0 ? (premium / total * 100).toFixed(1) : 0;
+    const tauxRetention = premium > 0 ? (actifs / premium * 100).toFixed(1) : 0;
+
+    res.json({
+      total_utilisateurs: total,
+      premium,
+      actifs,
+      taux_conversion: Number(tauxConversion),
+      taux_retention: Number(tauxRetention)
+    });
+  } catch (err) {
+    console.error("Erreur /utilisateurs/stats:", err.message);
+    res.status(500).json({ error: "Impossible de charger les statistiques utilisateurs" });
+  }
+});
 
 
 export default router;
