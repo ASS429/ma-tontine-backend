@@ -16,7 +16,13 @@ router.get("/", requireAuth, async (req, res) => {
     }
 
     const query = `
-      SELECT a.id, a.type, a.message, a.statut, a.cree_le, u.nom, u.prenom
+      SELECT 
+        a.id, 
+        a.type, 
+        a.message, 
+        a.statut, 
+        a.cree_le, 
+        u.nom_complet AS utilisateur_nom
       FROM alertes_admin a
       LEFT JOIN utilisateurs u ON a.utilisateur_id = u.id
       WHERE a.statut = 'en_attente'
@@ -26,7 +32,7 @@ router.get("/", requireAuth, async (req, res) => {
     const { rows } = await pool.query(query);
     res.json(rows);
   } catch (err) {
-    console.error("Erreur GET /admin/alertes:", err.message);
+    console.error("❌ Erreur GET /admin/alertes:", err.message);
     res.status(500).json({ error: "Impossible de charger les alertes" });
   }
 });
@@ -56,7 +62,7 @@ router.post("/", requireAuth, async (req, res) => {
 
     res.status(201).json(rows[0]);
   } catch (err) {
-    console.error("Erreur POST /admin/alertes:", err.message);
+    console.error("❌ Erreur POST /admin/alertes:", err.message);
     res.status(500).json({ error: "Impossible de créer l’alerte" });
   }
 });
@@ -87,14 +93,14 @@ router.patch("/:id", requireAuth, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error("Erreur PATCH /admin/alertes:", err.message);
+    console.error("❌ Erreur PATCH /admin/alertes:", err.message);
     res.status(500).json({ error: "Impossible de modifier l’alerte" });
   }
 });
 
 /* =========================================================
    🗑️ DELETE /api/admin/alertes/:id
-   → Supprimer définitivement une alerte (optionnel)
+   → Supprimer définitivement une alerte
 ========================================================= */
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
@@ -107,7 +113,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error("Erreur DELETE /admin/alertes:", err.message);
+    console.error("❌ Erreur DELETE /admin/alertes:", err.message);
     res.status(500).json({ error: "Impossible de supprimer l’alerte" });
   }
 });
