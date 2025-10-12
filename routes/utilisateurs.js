@@ -6,6 +6,7 @@ import { getSetting } from "../utils/settings.js";
 import { checkGracePeriod } from "../utils/checkGracePeriod.js";
 import { checkLatePayments } from "../utils/payments.js";
 import { getRecentLogs } from "../utils/logger.js";
+import { generateMonthlyReport } from "../utils/reports.js";
 
 const router = express.Router();
 
@@ -600,6 +601,8 @@ if (await getSetting("alertes_automatiques", true)) {
 }
 
    await checkLatePayments(req.user.id);
+     await generateMonthlyReport();
+
     const query = `
       WITH
       total_abonnes AS (
