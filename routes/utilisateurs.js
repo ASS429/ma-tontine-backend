@@ -567,6 +567,11 @@ router.get("/stats", requireAuth, async (req, res) => {
 ========================================================= */
 router.get("/dashboard", requireAuth, async (req, res) => {
   try {
+         // 🔎 Vérifie et met à jour les comptes expirés
+    if (req.user.role === "admin") {
+      await checkGracePeriod();
+    }
+
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Accès réservé aux administrateurs" });
     }
