@@ -17,6 +17,7 @@ import revenusRoutes from "./routes/revenus.js";
 import revenusAdminRoutes from "./routes/revenusAdmin.js";
 import comptesAdminRoutes from "./routes/comptesAdmin.js";
 import adminAlertesRoutes from "./routes/adminAlertes.js";
+import adminParametresRoutes from "./routes/adminParametres.js";
 
 dotenv.config();
 const app = express();
@@ -50,6 +51,7 @@ app.use("/api/revenus", revenusRoutes);
 app.use("/api/admin/revenus", revenusAdminRoutes);
 app.use("/api/admin/comptes", comptesAdminRoutes);
 app.use("/api/admin/alertes", adminAlertesRoutes);
+app.use("/api/admin/parametres", adminParametresRoutes);
 
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
