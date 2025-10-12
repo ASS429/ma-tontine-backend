@@ -4,6 +4,7 @@ import pool from "../db.js";
 import { createAdminAlert } from "../utils/alertes.js";
 import { getSetting } from "../utils/settings.js";
 import { checkGracePeriod } from "../utils/checkGracePeriod.js";
+import { checkLatePayments } from "../utils/payments.js";
 
 
 const router = express.Router();
@@ -575,7 +576,7 @@ router.get("/dashboard", requireAuth, async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Accès réservé aux administrateurs" });
     }
-
+   await checkLatePayments(req.user.id);
     const query = `
       WITH
       total_abonnes AS (
