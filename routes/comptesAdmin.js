@@ -2,6 +2,7 @@
 import express from "express";
 import pool from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { createAdminAlert } from "../utils/alertes.js";
 
 const router = express.Router();
 router.use(requireAuth);
@@ -56,6 +57,11 @@ router.post("/", requireAdmin, async (req, res) => {
        RETURNING *`,
       [req.user.id, type, solde || 0]
     );
+    await createAdminAlert(
+  "compte_admin_cree",
+  `Nouveau compte admin créé (${type}) avec un solde initial de ${solde || 0} FCFA.`,
+  req.user.id
+);
 
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -79,9 +85,15 @@ router.put("/:id", requireAdmin, async (req, res) => {
        RETURNING *`,
       [solde, id, req.user.id]
     );
+    await createAdminAlert(
+  "compte_admin_modifie",
+  `Le solde du compte admin a été modifié à ${solde} FCFA.`,
+  req.user.id
+);
 
     if (rows.length === 0)
-      return res.status(404).json({ error: "Compte introuvable" });
+      return res.status(404).json({ error: "Compte introuvable" })
+    
 
     res.json(rows[0]);
   } catch (err) {
@@ -100,6 +112,11 @@ router.delete("/:id", requireAdmin, async (req, res) => {
       `DELETE FROM comptes_admin WHERE id = $1 AND admin_id = $2`,
       [id, req.user.id]
     );
+await createAdminAlert(
+  "operation_suspecte",
+  `Un compte admin a été supprimé (ID: ${id}).`,
+  req.user.id
+);
 
     if (rowCount === 0)
       return res.status(404).json({ error: "Compte introuvable" });
