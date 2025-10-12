@@ -5,7 +5,7 @@ let cachedSettings = null;
 let lastLoadTime = null;
 
 /**
- * 🔄 Charge les paramètres de l’admin depuis la base (avec cache 5 min)
+ * 🔄 Charge les paramètres depuis la base (avec cache 5 min)
  */
 export async function getSettings(forceReload = false) {
   const shouldReload =
@@ -20,7 +20,9 @@ export async function getSettings(forceReload = false) {
     `);
     cachedSettings = rows[0] || {};
     lastLoadTime = Date.now();
+    console.log("⚙️ Paramètres rechargés depuis la base:", cachedSettings);
   }
+
   return cachedSettings;
 }
 
@@ -30,4 +32,14 @@ export async function getSettings(forceReload = false) {
 export async function getSetting(key, defaultValue = null) {
   const settings = await getSettings();
   return settings[key] !== undefined ? settings[key] : defaultValue;
+}
+
+/**
+ * ♻️ Force le rechargement du cache après mise à jour
+ */
+export async function refreshSettings() {
+  cachedSettings = null;
+  lastLoadTime = null;
+  await getSettings(true);
+  console.log("🔁 Cache des paramètres actualisé manuellement.");
 }
