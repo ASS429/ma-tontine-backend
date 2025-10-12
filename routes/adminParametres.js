@@ -1,6 +1,7 @@
 import express from "express";
 import pool from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { refreshSettings } from "../utils/settings.js";
 
 const router = express.Router();
 
@@ -72,7 +73,9 @@ router.post("/", requireAuth, async (req, res) => {
       p.deux_fa,
       req.user.id
     ]);
-
+     
+await refreshSettings();
+     
     res.json(rows[0]);
   } catch (err) {
     console.error("Erreur POST /parametres:", err.message);
