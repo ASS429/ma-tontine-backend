@@ -1,6 +1,7 @@
 import express from "express";
 import { requireAuth } from "../middleware/auth.js";
 import pool from "../db.js";
+import { createAdminAlert } from "../utils/alertes.js";
 
 const router = express.Router();
 
@@ -103,6 +104,11 @@ router.post("/upgrade", requireAuth, async (req, res) => {
           req.user.id
         ]
       );
+       await createAdminAlert(
+  "abonnement_premium_demande",
+  `${req.user.email} (${req.user.id}) a demandé un abonnement Premium.`,
+  req.user.id
+);
     }
 
     res.json({
@@ -153,6 +159,11 @@ router.put("/:id/block", requireAuth, async (req, res) => {
     );
 
     if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+         await createAdminAlert(
+  "utilisateur_suspendu",
+  `L’utilisateur ${rows[0].nom_complet} (${rows[0].email}) a été suspendu.`,
+  rows[0].id
+);
     res.json({ message: "🚫 Utilisateur bloqué", utilisateur: rows[0] });
   } catch (err) {
     console.error("Erreur block:", err.message);
@@ -174,8 +185,13 @@ router.put("/:id/activate", requireAuth, async (req, res) => {
        RETURNING id, nom_complet, email, role, plan, status, payment_status`,
       [req.params.id]
     );
-
     if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+     await createAdminAlert(
+  "utilisateur_reactive",
+  `L’utilisateur ${rows[0].nom_complet} (${rows[0].email}) a été réactivé.`,
+  rows[0].id
+);
+
     res.json({ message: "✅ Utilisateur activé", utilisateur: rows[0] });
   } catch (err) {
     console.error("Erreur activate:", err.message);
@@ -198,6 +214,12 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
     // Supprimer → la cascade s’occupe des tontines, membres, etc.
     await pool.query(`DELETE FROM utilisateurs WHERE id=$1`, [req.params.id]);
+
+     await createAdminAlert(
+  "operation_manquante",
+  `Suppression du compte ${rows[0].email} effectuée par un administrateur.`,
+  rows[0].id
+);
 
     res.json({ message: `🗑️ Utilisateur ${rows[0].email} supprimé avec succès (et toutes ses données liées)` });
   } catch (err) {
@@ -245,6 +267,16 @@ router.put("/:id/approve", requireAuth, async (req, res) => {
        RETURNING id, nom_complet, email, plan, payment_status, expiration, payment_method`,
       [user.id]
     );
+      await createAdminAlert(
+  "abonnement_premium_valide",
+  `${user.nom_complet} (${user.email}) vient d'être validé Premium.`,
+  user.id
+);
+
+await createAdminAlert(
+  "revenu_enregistre",
+  `Un revenu de ${montant} FCFA a été ajouté au compte admin via ${methode}.`
+);
 
     // 3️⃣ Vérifie s’il y a déjà une ligne de revenus correspondante
     const { rowCount: revenusExist } = await pool.query(
@@ -364,6 +396,11 @@ router.put("/:id/reject", requireAuth, async (req, res) => {
        RETURNING id, nom_complet, email, plan, payment_status, expiration`,
       [user.id]
     );
+     await createAdminAlert(
+  "validation_requise",
+  `La demande Premium de ${user.nom_complet} (${user.email}) a été rejetée.`,
+  user.id
+);
 
     res.json({
       message: "❌ Demande rejetée, revenu annulé si existant",
