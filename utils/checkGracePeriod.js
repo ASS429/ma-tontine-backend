@@ -2,6 +2,7 @@
 import pool from "../db.js";
 import { getSetting } from "./settings.js";
 import { createAdminAlert } from "./alertes.js";
+import { logSystem } from "./logger.js";
 
 /**
  * 🕓 Vérifie les abonnements expirés et bloque ceux qui dépassent le délai de grâce.
@@ -22,17 +23,12 @@ export async function checkGracePeriod() {
     `);
 
     if (rows.length > 0) {
-      console.log(`🔒 ${rows.length} abonnements Premium suspendus automatiquement.`);
-      if (await getSetting("alertes_automatiques", true)) {
-        for (const u of rows) {
-          await createAdminAlert(
-            "abonnement_expire",
-            `L’abonnement Premium de ${u.nom_complet} (${u.email}) a expiré depuis plus de ${delaiGrace} jours.`,
-            u.id
-          );
-        }
-      }
-    }
+  console.log(`🔒 ${rows.length} abonnements Premium suspendus automatiquement.`);
+  await logSystem(
+    "checkGracePeriod",
+    `${rows.length} abonnements Premium suspendus après dépassement du délai de grâce.`
+  );
+}
   } catch (err) {
     console.error("❌ Erreur checkGracePeriod:", err.message);
   }
