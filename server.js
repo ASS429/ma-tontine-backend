@@ -19,6 +19,11 @@ import comptesAdminRoutes from "./routes/comptesAdmin.js";
 import adminAlertesRoutes from "./routes/adminAlertes.js";
 import adminParametresRoutes from "./routes/adminParametres.js";
 
+import { checkGracePeriod } from "./utils/checkGracePeriod.js";
+import { checkLatePayments } from "./utils/payments.js";
+import { getSetting } from "./utils/settings.js";
+
+
 dotenv.config();
 const app = express();
 
@@ -53,6 +58,43 @@ app.use("/api/admin/comptes", comptesAdminRoutes);
 app.use("/api/admin/alertes", adminAlertesRoutes);
 app.use("/api/admin/parametres", adminParametresRoutes);
 
+/* =========================================================
+   🔁 Vérifications automatiques périodiques (grâce & paiements)
+========================================================= */
+async function startAutoChecks() {
+  try {
+    const intervalHours = 6; // toutes les 6 heures
+    const delayMs = intervalHours * 60 * 60 * 1000;
+
+    console.log(`🕒 Lancement du système de vérifications automatiques (${intervalHours}h).`);
+
+    // Fonction de vérification
+    const runChecks = async () => {
+      console.log("🔍 Vérification automatique des abonnements & paiements...");
+      try {
+        const graceActive = await getSetting("alertes_automatiques", true);
+        if (graceActive) {
+          await checkGracePeriod();
+          await checkLatePayments("system"); // “system” = exécution globale
+          console.log("✅ Vérifications terminées avec succès.");
+        } else {
+          console.log("⚙️ Vérifications automatiques désactivées dans les paramètres.");
+        }
+      } catch (err) {
+        console.error("❌ Erreur lors de l’exécution automatique :", err.message);
+      }
+    };
+
+    // Démarrage initial immédiat
+    await runChecks();
+
+    // Puis répéter toutes les X heures
+    setInterval(runChecks, delayMs);
+  } catch (err) {
+    console.error("❌ Erreur lors du démarrage du système auto:", err.message);
+  }
+}
+
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
@@ -69,4 +111,7 @@ app.listen(PORT, () => {
   console.log(" - /api/paiements");  
   console.log(" - /api/comptes");    
   console.log(" - /health");
+
+    // 🚀 Démarre les vérifications automatiques
+  startAutoChecks();
 });
