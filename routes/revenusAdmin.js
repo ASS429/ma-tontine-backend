@@ -1,6 +1,7 @@
 import express from "express";
 import pool from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { createAdminAlert } from "../utils/alertes.js";
 
 const router = express.Router();
 
@@ -52,6 +53,11 @@ router.post("/", requireAuth, async (req, res) => {
        RETURNING *`,
       [source, montant, methode || "autre", statut || "effectue", description || null, req.user.id]
     );
+await createAdminAlert(
+  "revenu_enregistre",
+  `Nouveau revenu enregistré : ${source} (${montant} FCFA via ${methode}).`,
+  req.user.id
+);
 
     res.status(201).json(rows[0]);
   } catch (err) {
