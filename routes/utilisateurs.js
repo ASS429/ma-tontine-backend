@@ -576,6 +576,29 @@ router.get("/dashboard", requireAuth, async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Accès réservé aux administrateurs" });
     }
+     // 🕒 Vérification automatique du délai de grâce
+const delaiGrace = await getSetting("delai_grace", 7); // valeur par défaut : 7 jours
+
+// 🔹 Bloquer automatiquement les comptes expirés depuis plus que delaiGrace
+await pool.query(`
+  UPDATE utilisateurs
+  SET status = 'Bloqué'
+  WHERE plan = 'Premium'
+    AND expiration IS NOT NULL
+    AND expiration < NOW() - INTERVAL '${delaiGrace} days'
+    AND status != 'Bloqué'
+`);
+console.log(`⏳ Comptes Premium bloqués selon délai de grâce (${delaiGrace} jours)`);
+
+// 🔔 Créer une alerte automatique
+if (await getSetting("alertes_automatiques", true)) {
+  await createAdminAlert(
+    "utilisateur_suspendu",
+    `Des comptes Premium ont été bloqués automatiquement après ${delaiGrace} jours de grâce.`,
+    req.user.id
+  );
+}
+
    await checkLatePayments(req.user.id);
     const query = `
       WITH
