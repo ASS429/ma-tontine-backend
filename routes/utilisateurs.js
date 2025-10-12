@@ -5,7 +5,7 @@ import { createAdminAlert } from "../utils/alertes.js";
 import { getSetting } from "../utils/settings.js";
 import { checkGracePeriod } from "../utils/checkGracePeriod.js";
 import { checkLatePayments } from "../utils/payments.js";
-
+import { getRecentLogs } from "../utils/logger.js";
 
 const router = express.Router();
 
@@ -660,15 +660,25 @@ if (await getSetting("alertes_automatiques", true)) {
       ? ((stats.revenus_mensuels - stats.revenus_prec_mois) / stats.revenus_prec_mois * 100).toFixed(1)
       : 100.0;
 
-    res.json({
-      total_abonnes: Number(stats.total_abonnes),
-      abonnes_actifs: Number(stats.abonnes_actifs),
-      revenus_mensuels: Number(stats.revenus_mensuels),
-      croissance_abonnes: Number(croissanceAbonnes),
-      croissance_actifs: Number(croissanceActifs),
-      croissance_revenus: Number(croissanceRevenus),
-      alertes_paiement: Number(stats.alertes_paiement)
-    });
+    // 🔹 Récupération des logs récents
+const logs = await getRecentLogs(10); // 10 dernières exécutions système
+
+res.json({
+  total_abonnes: Number(stats.total_abonnes),
+  abonnes_actifs: Number(stats.abonnes_actifs),
+  revenus_mensuels: Number(stats.revenus_mensuels),
+  croissance_abonnes: Number(croissanceAbonnes),
+  croissance_actifs: Number(croissanceActifs),
+  croissance_revenus: Number(croissanceRevenus),
+  alertes_paiement: Number(stats.alertes_paiement),
+  system_logs: logs.map(log => ({
+    id: log.id,
+    action: log.action,
+    details: log.details,
+    cree_le: log.cree_le
+  }))
+});
+
   } catch (err) {
     console.error("Erreur /utilisateurs/dashboard:", err.message);
     res.status(500).json({ error: "Impossible de charger les stats du tableau de bord" });
