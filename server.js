@@ -57,6 +57,8 @@ app.use("/api/admin/revenus", revenusAdminRoutes);
 app.use("/api/admin/comptes", comptesAdminRoutes);
 app.use("/api/admin/alertes", adminAlertesRoutes);
 app.use("/api/admin/parametres", adminParametresRoutes);
+app.use("/api/admin/rapports", (await import("./routes/adminRapports.js")).default);
+
 
 /* =========================================================
    🔁 Vérifications automatiques périodiques (grâce & paiements)
