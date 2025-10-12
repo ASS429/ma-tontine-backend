@@ -39,7 +39,7 @@ router.get("/", requireAuth, async (req, res) => {
 
 /* =========================================================
    🟢 POST /api/admin/alertes
-   → Créer manuellement une alerte (optionnel)
+   → Créer une alerte (manuelle ou automatique)
 ========================================================= */
 router.post("/", requireAuth, async (req, res) => {
   try {
@@ -49,23 +49,36 @@ router.post("/", requireAuth, async (req, res) => {
 
     const { type, message, utilisateur_id } = req.body;
 
-    if (!type || !message) {
-      return res.status(400).json({ error: "Champs obligatoires manquants" });
+    // Vérification du type valide
+    const typesValides = [
+      'paiement_en_retard', 'paiement_effectue', 'solde_compte_faible', 'revenu_enregistre', 'transaction_refusee', 'remboursement_effectue',
+      'nouvel_utilisateur', 'abonnement_premium_demande', 'abonnement_premium_valide', 'abonnement_expire', 'utilisateur_suspendu', 'utilisateur_reactive',
+      'nouvelle_tontine', 'tontine_cloturee', 'retard_cotisation', 'tirage_effectue', 'cycle_termine', 'cycle_retard',
+      'erreur_serveur', 'operation_suspecte', 'sauvegarde_effectuee', 'maj_systeme', 'erreur_api',
+      'rapport_disponible', 'validation_requise', 'compte_admin_cree', 'compte_admin_modifie', 'operation_manquante'
+    ];
+
+    if (!typesValides.includes(type)) {
+      return res.status(400).json({ error: "Type d’alerte invalide" });
     }
+
+    // Message par défaut si non fourni
+    const msg = message || `Nouvelle alerte de type ${type}`;
 
     const { rows } = await pool.query(
       `INSERT INTO alertes_admin (type, message, utilisateur_id)
        VALUES ($1, $2, $3)
        RETURNING *;`,
-      [type, message, utilisateur_id || null]
+      [type, msg, utilisateur_id || null]
     );
 
     res.status(201).json(rows[0]);
   } catch (err) {
-    console.error("❌ Erreur POST /admin/alertes:", err.message);
+    console.error("Erreur POST /admin/alertes:", err.message);
     res.status(500).json({ error: "Impossible de créer l’alerte" });
   }
 });
+
 
 /* =========================================================
    ✏️ PATCH /api/admin/alertes/:id
