@@ -1,6 +1,7 @@
 import pool from "../db.js";
 import { getSetting } from "./settings.js";
 import { createAdminAlert } from "./alertes.js";
+import { logSystem } from "./logger.js";
 
 /**
  * 🔎 Vérifie les paiements en retard et crée une alerte si activé
@@ -48,7 +49,11 @@ export async function checkLatePayments(adminId) {
       );
     }
 
-    console.log(`⚠️ Vérification terminée : ${enRetard.length} utilisateurs en retard analysés.`);
+   console.log(`⚠️ Vérification terminée : ${enRetard.length} utilisateurs en retard analysés.`);
+await logSystem(
+  "checkLatePayments",
+  `${enRetard.length} utilisateurs Premium en retard de paiement vérifiés.`
+);
   } catch (err) {
     console.error("❌ Erreur checkLatePayments:", err.message);
   }
