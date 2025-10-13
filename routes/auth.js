@@ -26,8 +26,14 @@ router.post("/init-2fa", async (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "userId requis" });
 
-    const deux_fa = await getSetting("deux_fa", false);
-    if (!deux_fa) return res.json({ active: false });
+    // 🔎 Vérifier si cet admin a activé 2FA dans parametres_admin
+const { rows: params } = await pool.query(
+  "SELECT deux_fa FROM parametres_admin WHERE admin_id = $1 ORDER BY maj_le DESC LIMIT 1",
+  [userId]
+);
+const deux_fa = params[0]?.deux_fa || false;
+if (!deux_fa) return res.json({ active: false });
+
 
     const { rows } = await pool.query(
       "SELECT id, nom_complet, email FROM utilisateurs WHERE id=$1 AND role='admin'",
