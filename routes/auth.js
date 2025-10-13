@@ -24,6 +24,7 @@ router.get("/me", requireAuth, (req, res) => {
 router.post("/init-2fa", async (req, res) => {
   try {
     const { userId } = req.body;
+     console.log("🚀 Requête init-2fa reçue pour user:", userId);
     if (!userId) return res.status(400).json({ error: "userId requis" });
 
     // 🔎 Vérifier si cet admin a activé 2FA dans parametres_admin
