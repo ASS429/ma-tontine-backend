@@ -1,97 +1,185 @@
-const express = require("express");
-const { requireAuth } = require("../middleware/auth.js");
-const pool = require("../db.js");
-const { getSetting } = require("../utils/settings.js");
-const { sendOTP, verifyOTP } = require("../utils/otp.js");
+import express from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import pool from "../db.js";
+import sendEmail from "../utils/mailer.js";
 
 const router = express.Router();
 
-/* -----------------------
-   📌 GET infos du JWT
------------------------- */
-router.get("/me", requireAuth, (req, res) => {
-  // req.user est déjà rempli par le middleware auth.js
-  res.json({
-    id: req.user.id,
-    email: req.user.email,
-    role: req.user.role || "user",
-  });
+/* ==========================
+   🧩 Inscription (Admin ou public)
+========================== */
+router.post("/register", async (req, res) => {
+  const {
+    username,
+    password,
+    company_name,
+    phone,
+    role = "user",
+    status = "Actif",
+    plan = "Free",
+    payment_status = "À jour",
+    payment_method,
+    expiration,
+    amount = 0.0,
+    upgrade_status = "validé"
+  } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Champs manquants" });
+  }
+
+  try {
+    const existingUser = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ error: "Utilisateur déjà existant" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await pool.query(
+      `INSERT INTO users 
+       (username, password, company_name, phone, role, status, plan, payment_status, payment_method, expiration, amount, upgrade_status) 
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING *`,
+      [
+        username,
+        hashedPassword,
+        company_name || null,
+        phone || null,
+        role,
+        status,
+        plan,
+        payment_status,
+        payment_method || null,
+        expiration || null,
+        amount,
+        upgrade_status
+      ]
+    );
+
+    res.status(201).json({ message: "Compte créé avec succès", user: result.rows[0] });
+  } catch (err) {
+    console.error("❌ Erreur inscription :", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* -----------------------
-   1️⃣ Init 2FA après login
------------------------- */
-router.post("/init-2fa", async (req, res) => {
+/* ==========================
+   🔐 Connexion avec 2FA
+========================== */
+router.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: "Champs manquants" });
+
   try {
-    const { userId } = req.body;
-    console.log("🚀 Requête init-2fa reçue pour user:", userId);
-    if (!userId) return res.status(400).json({ error: "userId requis" });
-
-    // 🔍 Vérifie si l’option 2FA est activée
-    const { rows: params } = await pool.query(
-      "SELECT deux_fa FROM parametres_admin WHERE admin_id = $1 ORDER BY maj_le DESC LIMIT 1",
-      [userId]
+    const result = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
+      [username]
     );
+    if (result.rows.length === 0) return res.status(400).json({ error: "Utilisateur introuvable" });
 
-    const deux_fa = params[0]?.deux_fa || false;
-    console.log("🔍 Valeur deux_fa pour cet admin:", deux_fa);
+    const user = result.rows[0];
 
-    if (!deux_fa) {
-      console.log("⚙️ 2FA désactivée pour cet admin");
-      return res.json({ active: false });
+    if (user.status === "Bloqué") {
+      return res.status(403).json({ error: "Compte bloqué, contactez l’administrateur." });
     }
 
-    // 👤 Récupère l’administrateur
-    const { rows } = await pool.query(
-      "SELECT id, nom_complet, email FROM utilisateurs WHERE id=$1 AND role='admin'",
-      [userId]
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(401).json({ error: "Mot de passe incorrect" });
+
+    // 🔎 Vérifie si 2FA activée
+    const settings = await pool.query(
+      "SELECT twofa_enabled FROM admin_settings WHERE admin_id = $1 LIMIT 1",
+      [user.id]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "Administrateur introuvable" });
-    }
+    const twofaEnabled = settings.rows[0]?.twofa_enabled || false;
 
-    const admin = rows[0];
-    console.log("📬 Envoi OTP à:", admin.email);
+    if (twofaEnabled && user.role === "admin") {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expires = new Date(Date.now() + 5 * 60 * 1000);
 
-    // ✉️ Envoi du code OTP
-    try {
-      await sendOTP(admin);
-      console.log("✅ sendOTP terminé sans erreur");
-      return res.json({ active: true, message: "Code OTP envoyé à votre email" });
-    } catch (emailError) {
-      console.error("❌ Erreur sendOTP:", emailError.message);
-      return res.status(500).json({
-        active: false,
-        error: "Erreur d’envoi du mail : " + emailError.message,
+      await pool.query(
+        `INSERT INTO twofa_codes (user_id, code, expires_at) VALUES ($1, $2, $3)`,
+        [user.id, code, expires]
+      );
+
+      await sendEmail(
+        user.username,
+        "Votre code de connexion (2FA) - Ma Boutique",
+        `Bonjour,\n\nVoici votre code : ${code}\n\nValable 5 minutes.\n\n— Ma Boutique`
+      );
+
+      return res.json({
+        twofa_required: true,
+        userId: user.id,
+        message: "Code 2FA envoyé par email"
       });
     }
+
+    // ✅ Connexion normale
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.username,
+        role: user.role,
+        company_name: user.company_name,
+        phone: user.phone,
+        plan: user.plan,
+        upgrade_status: user.upgrade_status
+      }
+    });
   } catch (err) {
-    console.error("❌ Erreur init-2fa:", err.message);
-    return res.status(500).json({ error: err.message || "Erreur 2FA" });
+    console.error("❌ Erreur connexion :", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-/* -----------------------
-   2️⃣ Vérification du code OTP
------------------------- */
+/* ==========================
+   ✅ Vérification du code 2FA
+========================== */
 router.post("/verify-2fa", async (req, res) => {
+  const { userId, code } = req.body;
+  if (!userId || !code) return res.status(400).json({ error: "Champs manquants" });
+
   try {
-    const { userId, code } = req.body;
-    if (!userId || !code)
-      return res.status(400).json({ error: "Champs manquants" });
+    const q = await pool.query(
+      `SELECT * FROM twofa_codes 
+       WHERE user_id = $1 AND code = $2 AND used = false 
+         AND expires_at > NOW() 
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId, code]
+    );
 
-    const valid = await verifyOTP(userId, code);
+    if (q.rows.length === 0) return res.status(400).json({ error: "Code invalide ou expiré" });
 
-    if (!valid)
-      return res.status(400).json({ error: "Code invalide ou expiré" });
+    await pool.query(`UPDATE twofa_codes SET used = true WHERE id = $1`, [q.rows[0].id]);
 
-    console.log(`✅ 2FA validé pour ${userId}`);
-    res.json({ success: true, message: "2FA validé ✅" });
+    const { rows } = await pool.query(
+      "SELECT id, username, role, company_name, phone, plan, upgrade_status FROM users WHERE id = $1",
+      [userId]
+    );
+    const user = rows[0];
+
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.json({ token, user });
   } catch (err) {
-    console.error("❌ Erreur verify-2fa:", err.message);
-    res.status(500).json({ error: "Erreur vérification OTP" });
+    console.error("❌ Erreur verify-2fa:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-module.exports = router;
+export default router;
