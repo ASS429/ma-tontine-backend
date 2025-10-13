@@ -2,7 +2,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import pool from "../db.js";
-import sendEmail from "../utils/mailer.js";
+import sendEmail from "../utils/otp.js";
 
 const router = express.Router();
 
