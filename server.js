@@ -18,6 +18,7 @@ import revenusAdminRoutes from "./routes/revenusAdmin.js";
 import comptesAdminRoutes from "./routes/comptesAdmin.js";
 import adminAlertesRoutes from "./routes/adminAlertes.js";
 import adminParametresRoutes from "./routes/adminParametres.js";
+import testEmailRoutes from "./routes/testEmail.js";
 
 import { checkGracePeriod } from "./utils/checkGracePeriod.js";
 import { checkLatePayments } from "./utils/payments.js";
@@ -60,6 +61,7 @@ app.use("/api/admin/comptes", comptesAdminRoutes);
 app.use("/api/admin/alertes", adminAlertesRoutes);
 app.use("/api/admin/parametres", adminParametresRoutes);
 app.use("/api/admin/rapports", (await import("./routes/adminRapports.js")).default);
+app.use("/api/test-email", testEmailRoutes);
 
 /* =========================================================
    🔁 Vérifications automatiques périodiques (grâce & paiements)
