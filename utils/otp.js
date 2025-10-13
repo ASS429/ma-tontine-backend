@@ -7,6 +7,10 @@ export async function sendOTP(admin) {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const expireTime = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
+    console.log("🚀 Début sendOTP pour:", admin.email);
+  console.log("📩 SMTP_USER:", process.env.SMTP_USER);
+  console.log("🔑 SMTP_PASS présent:", !!process.env.SMTP_PASS);
+  
   // 🗃️ Enregistrer le code dans la base
   await pool.query(
     `INSERT INTO otp_codes (utilisateur_id, code, expire_le)
