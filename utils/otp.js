@@ -1,3 +1,4 @@
+// utils/otp.js
 import pool from "../db.js";
 import nodemailer from "nodemailer";
 import { getSetting } from "./settings.js";
@@ -6,6 +7,7 @@ export async function sendOTP(admin) {
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   const expireTime = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
+  // 🗃️ Enregistrer le code dans la base
   await pool.query(
     `INSERT INTO otp_codes (utilisateur_id, code, expire_le)
      VALUES ($1, $2, $3)`,
@@ -15,6 +17,7 @@ export async function sendOTP(admin) {
   const email_from = await getSetting("email_contact", "noreply@matontine.com");
 
   try {
+    // ⚙️ Création du transporteur Gmail
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -23,6 +26,7 @@ export async function sendOTP(admin) {
       }
     });
 
+    // 📤 Envoi du mail
     await transporter.sendMail({
       from: email_from,
       to: admin.email,
@@ -40,6 +44,21 @@ export async function sendOTP(admin) {
     return true;
   } catch (err) {
     console.error("❌ Erreur d'envoi d'email OTP:", err.message);
-    throw new Error("Impossible d'envoyer l'OTP: " + err.message);
+    // on relance l'erreur pour que la route sache qu'il y a eu un souci
+    throw new Error("Impossible d'envoyer le code OTP : " + err.message);
   }
+}
+
+export async function verifyOTP(userId, code) {
+  const { rows } = await pool.query(
+    `SELECT * FROM otp_codes 
+     WHERE utilisateur_id=$1 AND code=$2 AND utilise=false AND expire_le>NOW()
+     ORDER BY cree_le DESC LIMIT 1`,
+    [userId, code]
+  );
+
+  if (rows.length === 0) return false;
+
+  await pool.query(`UPDATE otp_codes SET utilise=true WHERE id=$1`, [rows[0].id]);
+  return true;
 }
