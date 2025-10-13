@@ -10,7 +10,8 @@ const router = express.Router();
  */
 router.get("/", requireAuth, async (req, res) => {
   try {
-    if (req.user.role !== "admin") return res.status(403).json({ error: "Accès réservé" });
+    if (req.user.role !== "admin")
+      return res.status(403).json({ error: "Accès réservé" });
 
     const { rows } = await pool.query(
       `SELECT mois, total_revenus, total_abonnes, total_premium, nouveaux_abonnes, cree_le
@@ -27,7 +28,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
-**
+/**
  * 📊 POST /api/admin/rapports/generate → Génère un rapport manuel
  */
 router.post("/generate", requireAuth, async (req, res) => {
