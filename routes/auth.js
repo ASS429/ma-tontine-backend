@@ -1,44 +1,79 @@
+// routes/auth.js
+import express from "express";
 import pool from "../db.js";
-import nodemailer from "nodemailer";
+import { requireAuth } from "../middleware/auth.js";
+import { sendOTP, verifyOTP } from "../utils/otp.js";
 
-export async function sendOTP(admin) {
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expireTime = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+const router = express.Router();
 
-  console.log("🚀 Envoi OTP pour:", admin.email);
+/* =========================================================
+   📌 GET /api/auth/me → infos du JWT
+========================================================= */
+router.get("/me", requireAuth, (req, res) => {
+  res.json({
+    id: req.user.id,
+    email: req.user.email,
+    role: req.user.role || "user",
+  });
+});
 
-  await pool.query(
-    `INSERT INTO otp_codes (utilisateur_id, code, expire_le)
-     VALUES ($1, $2, $3)`,
-    [admin.id, code, expireTime]
-  );
-
+/* =========================================================
+   1️⃣ POST /api/auth/init-2fa → Lancer la vérification 2FA
+========================================================= */
+router.post("/init-2fa", async (req, res) => {
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
+    const { userId } = req.body;
+    console.log("🚀 Requête init-2fa reçue pour user:", userId);
 
-    await transporter.sendMail({
-      from: `"Ma Tontine" <${process.env.SMTP_USER}>`,
-      to: admin.email,
-      subject: "🔐 Code de vérification (2FA)",
-      text: `Bonjour ${admin.nom_complet || ""},
+    if (!userId) return res.status(400).json({ error: "userId requis" });
 
-Voici votre code de connexion : ${code}
-Ce code est valable 5 minutes.
+    const { rows: params } = await pool.query(
+      "SELECT deux_fa FROM parametres_admin WHERE admin_id = $1 ORDER BY maj_le DESC LIMIT 1",
+      [userId]
+    );
 
-Merci,
-L’équipe Ma Tontine.`
-    });
+    const deux_fa = params[0]?.deux_fa || false;
+    console.log("🔍 Valeur deux_fa pour cet admin:", deux_fa);
 
-    console.log(`📨 OTP envoyé à ${admin.email} (${code})`);
-    return true;
+    if (!deux_fa) return res.json({ active: false, message: "2FA désactivée" });
+
+    const { rows } = await pool.query(
+      "SELECT id, nom_complet, email FROM utilisateurs WHERE id = $1 AND role = 'admin'",
+      [userId]
+    );
+
+    if (rows.length === 0)
+      return res.status(404).json({ error: "Administrateur introuvable" });
+
+    const admin = rows[0];
+    console.log("📬 Envoi OTP à:", admin.email);
+
+    await sendOTP(admin);
+    res.json({ active: true, message: "Code OTP envoyé à votre email" });
   } catch (err) {
-    console.error("❌ Erreur envoi email OTP:", err.message);
-    throw new Error("Impossible d’envoyer le code OTP");
+    console.error("❌ Erreur init-2fa:", err.message);
+    res.status(500).json({ error: "Erreur 2FA : " + err.message });
   }
-}
+});
+
+/* =========================================================
+   2️⃣ POST /api/auth/verify-2fa → Vérifie le code OTP
+========================================================= */
+router.post("/verify-2fa", async (req, res) => {
+  try {
+    const { userId, code } = req.body;
+    if (!userId || !code)
+      return res.status(400).json({ error: "Champs manquants" });
+
+    const valid = await verifyOTP(userId, code);
+    if (!valid)
+      return res.status(400).json({ success: false, error: "Code invalide ou expiré" });
+
+    res.json({ success: true, message: "2FA validée ✅" });
+  } catch (err) {
+    console.error("❌ Erreur verify-2fa:", err.message);
+    res.status(500).json({ error: "Erreur vérification OTP" });
+  }
+});
+
+export default router;
