@@ -1,4 +1,4 @@
-// ✅ Version ESM (compatible avec import/export)
+// server.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -24,11 +24,9 @@ import { checkLatePayments } from "./utils/payments.js";
 import { getSetting } from "./utils/settings.js";
 
 dotenv.config();
+
 const app = express();
 
-/* =========================================================
-   🌍 CORS
-========================================================= */
 app.use(
   cors({
     origin: [
@@ -42,14 +40,10 @@ app.use(
 
 app.use(express.json());
 
-/* =========================================================
-   💚 Health Check
-========================================================= */
+// 🩺 Route de test de santé
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-/* =========================================================
-   🚦 Routes principales
-========================================================= */
+// 📦 Routes principales
 app.use("/api/tontines", tontinesRoutes);
 app.use("/api/membres", membresRoutes);
 app.use("/api/cotisations", cotisationsRoutes);
@@ -65,26 +59,17 @@ app.use("/api/admin/revenus", revenusAdminRoutes);
 app.use("/api/admin/comptes", comptesAdminRoutes);
 app.use("/api/admin/alertes", adminAlertesRoutes);
 app.use("/api/admin/parametres", adminParametresRoutes);
+app.use("/api/admin/rapports", (await import("./routes/adminRapports.js")).default);
 
 /* =========================================================
-   ⚡ Import dynamique adminRapports
-========================================================= */
-try {
-  const { default: adminRapportsRoutes } = await import("./routes/adminRapports.js");
-  app.use("/api/admin/rapports", adminRapportsRoutes);
-} catch (err) {
-  console.error("⚠️ Impossible de charger adminRapports:", err.message);
-}
-
-/* =========================================================
-   🔁 Vérifications automatiques périodiques
+   🔁 Vérifications automatiques périodiques (grâce & paiements)
 ========================================================= */
 async function startAutoChecks() {
   try {
-    const intervalHours = 6; // toutes les 6 heures
+    const intervalHours = 6; // toutes les 6h
     const delayMs = intervalHours * 60 * 60 * 1000;
 
-    console.log(`🕒 Vérifications automatiques toutes les ${intervalHours}h.`);
+    console.log(`🕒 Lancement du système de vérifications automatiques (${intervalHours}h).`);
 
     const runChecks = async () => {
       console.log("🔍 Vérification automatique des abonnements & paiements...");
@@ -95,26 +80,39 @@ async function startAutoChecks() {
           await checkLatePayments("system");
           console.log("✅ Vérifications terminées avec succès.");
         } else {
-          console.log("⚙️ Vérifications automatiques désactivées.");
+          console.log("⚙️ Vérifications automatiques désactivées dans les paramètres.");
         }
       } catch (err) {
-        console.error("❌ Erreur vérifications automatiques:", err.message);
+        console.error("❌ Erreur lors de l’exécution automatique :", err.message);
       }
     };
 
+    // Démarrage initial + répétition
     await runChecks();
     setInterval(runChecks, delayMs);
   } catch (err) {
-    console.error("❌ Erreur démarrage vérifications automatiques:", err.message);
+    console.error("❌ Erreur lors du démarrage du système auto:", err.message);
   }
 }
 
 /* =========================================================
-   🚀 Lancement serveur
+   🚀 Lancement du serveur
 ========================================================= */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Serveur lancé sur le port ${PORT}`);
-  console.log("📍 Routes principales actives : /api/auth, /api/tontines, /api/admin/...");
+  console.log(`✅ API démarrée sur le port : ${PORT}`);
+  console.log("Routes actives :");
+  console.log(" - /api/tontines");
+  console.log(" - /api/membres");
+  console.log(" - /api/cotisations");
+  console.log(" - /api/utilisateurs");
+  console.log(" - /api/auth");
+  console.log(" - /api/tirages");
+  console.log(" - /api/stats");
+  console.log(" - /api/alertes");
+  console.log(" - /api/paiements");
+  console.log(" - /api/comptes");
+  console.log(" - /health");
+
   startAutoChecks();
 });
