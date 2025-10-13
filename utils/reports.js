@@ -57,11 +57,20 @@ export async function generateMonthlyReport(adminId = null) {
     const rapport = stats[0];
 
     // 💾 Enregistrer dans la table
-    await pool.query(
-      `INSERT INTO rapports_admin (mois, total_revenus, total_abonnes, total_premium, nouveaux_abonnes, admin_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [moisTexte, rapport.total_revenus, rapport.total_abonnes, rapport.total_premium, rapport.nouveaux_abonnes, adminId]
-    );
+await pool.query(
+  `INSERT INTO rapports_admin (mois, total_revenus, total_abonnes, total_premium, nouveaux_abonnes, admin_id)
+   VALUES ($1, $2, $3, $4, $5, $6)
+   ON CONFLICT (mois, admin_id)
+   DO NOTHING;`,
+  [
+    moisTexte,
+    rapport.total_revenus,
+    rapport.total_abonnes,
+    rapport.total_premium,
+    rapport.nouveaux_abonnes,
+    adminId || (await getDefaultAdminId()), // 👈 correction ici
+  ]
+);
 
     console.log(`✅ Rapport du mois ${moisTexte} enregistré.`);
 
