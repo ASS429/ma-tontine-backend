@@ -33,6 +33,7 @@ const { rows: params } = await pool.query(
   [userId]
 );
 const deux_fa = params[0]?.deux_fa || false;
+     console.log("🔍 Valeur deux_fa pour cet admin:", deux_fa); // <== ajoute ceci
 if (!deux_fa) return res.json({ active: false });
 
 
@@ -43,6 +44,7 @@ if (!deux_fa) return res.json({ active: false });
 
     if (rows.length === 0)
       return res.status(404).json({ error: "Administrateur introuvable" });
+     console.log("📬 Envoi OTP à:", rows[0].email);
 
     await sendOTP(rows[0]);
     res.json({ active: true, message: "Code OTP envoyé à votre email" });
