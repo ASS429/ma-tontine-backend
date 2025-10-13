@@ -1,3 +1,4 @@
+// utils/reports.js
 import pool from "../db.js";
 import { getSetting } from "./settings.js";
 import { logSystem } from "./logger.js";
@@ -13,19 +14,19 @@ export async function generateMonthlyReport(adminId = null) {
 
     console.log("📊 Génération du rapport mensuel...");
 
-    // Déterminer le mois précédent
+    // 🔹 Déterminer le mois précédent
     const mois = new Date();
     mois.setMonth(mois.getMonth() - 1);
     const moisTexte = mois.toISOString().slice(0, 7); // ex: 2025-09
 
-    // Vérifie si un rapport existe déjà
+    // 🔹 Vérifie si le rapport existe déjà
     const { rows: existing } = await pool.query(
       `SELECT id FROM rapports_admin WHERE mois = $1 AND admin_id = $2`,
       [moisTexte, adminId]
     );
     if (existing.length > 0) {
       console.log(`ℹ️ Rapport ${moisTexte} déjà existant pour cet admin.`);
-      return;
+      return; // 🛑 Stop — pas de régénération
     }
 
     // 📊 Calculer les statistiques du mois passé
@@ -56,21 +57,20 @@ export async function generateMonthlyReport(adminId = null) {
 
     const rapport = stats[0];
 
-    // 💾 Enregistrer dans la table
-await pool.query(
-  `INSERT INTO rapports_admin (mois, total_revenus, total_abonnes, total_premium, nouveaux_abonnes, admin_id)
-   VALUES ($1, $2, $3, $4, $5, $6)
-   ON CONFLICT (mois, admin_id)
-   DO NOTHING;`,
-  [
-    moisTexte,
-    rapport.total_revenus,
-    rapport.total_abonnes,
-    rapport.total_premium,
-    rapport.nouveaux_abonnes,
-    adminId || (await getDefaultAdminId()), // 👈 correction ici
-  ]
-);
+    // 💾 Enregistrer dans la table (une seule fois)
+    await pool.query(
+      `INSERT INTO rapports_admin (mois, total_revenus, total_abonnes, total_premium, nouveaux_abonnes, admin_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (mois, admin_id) DO NOTHING;`,
+      [
+        moisTexte,
+        rapport.total_revenus,
+        rapport.total_abonnes,
+        rapport.total_premium,
+        rapport.nouveaux_abonnes,
+        adminId,
+      ]
+    );
 
     console.log(`✅ Rapport du mois ${moisTexte} enregistré.`);
 
@@ -81,12 +81,22 @@ await pool.query(
     );
 
     // 🔔 Créer une alerte si autorisé
-    if (await getSetting("alertes_automatiques", true)) {
-      await createAdminAlert(
-        "rapport_disponible",
-        `Un nouveau rapport mensuel (${moisTexte}) est disponible.`,
-        adminId
+    const alertesActives = await getSetting("alertes_automatiques", true);
+    if (alertesActives) {
+      const { rows: existingAlert } = await pool.query(
+        `SELECT id FROM alertes_admin WHERE type = 'rapport_disponible' AND message LIKE $1`,
+        [`%${moisTexte}%`]
       );
+
+      if (existingAlert.length === 0) {
+        await createAdminAlert(
+          "rapport_disponible",
+          `Un nouveau rapport mensuel (${moisTexte}) est disponible.`,
+          adminId
+        );
+      } else {
+        console.log("⚙️ Alerte rapport déjà existante pour ce mois.");
+      }
     }
   } catch (err) {
     console.error("❌ Erreur génération rapport:", err.message);
