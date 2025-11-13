@@ -16,12 +16,12 @@ router.get("/", async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT * FROM public.alertes 
-       WHERE "utilisateurId"=$1 
-         AND COALESCE(estResolue, false) = false
-       ORDER BY dateCreation DESC`,
-      [req.user.id]
-    );
+  `SELECT * FROM public.alertes_vue 
+   WHERE "utilisateurId"=$1 
+     AND COALESCE("estResolue", false) = false
+   ORDER BY "dateCreation" DESC`,
+  [req.user.id]
+);
 
     res.json(rows);
   } catch (err) {
