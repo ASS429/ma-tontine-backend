@@ -187,27 +187,29 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    // ✅ Création autorisée
-    const { rows } = await pool.query(
-      `INSERT INTO tontines (
-         nom, type, montant_cotisation, frequence_cotisation,
-         jour_cotisation, frequence_tirage, nombre_membres,
-         description, createur
-       )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       RETURNING *`,
-      [
-        nom,
-        type,
-        montant_cotisation,
-        frequence_cotisation,
-        jour_cotisation,
-        frequence_tirage,
-        nombre_membres,
-        description || null,
-        req.user.id
-      ]
-    );
+    const jourFinal =
+  frequence_cotisation === "quotidien" ? null : jour_cotisation;
+
+const { rows } = await pool.query(
+  `INSERT INTO tontines (
+     nom, type, montant_cotisation, frequence_cotisation,
+     jour_cotisation, frequence_tirage, nombre_membres,
+     description, createur
+   )
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+   RETURNING *`,
+  [
+    nom,
+    type,
+    montant_cotisation,
+    frequence_cotisation,
+    jourFinal,
+    frequence_tirage,
+    nombre_membres,
+    description || null,
+    req.user.id
+  ]
+);
 
     const t = rows[0];
 
