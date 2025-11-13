@@ -252,12 +252,15 @@ router.put("/:id", requireAuth, async (req, res) => {
     description,
     statut
   } = req.body;
+   
+const jourFinal =
+  frequence_cotisation === "quotidien" ? null : jour_cotisation;
 
   try {
     const { rows } = await pool.query(
       `UPDATE tontines
        SET nom=$1, type=$2, montant_cotisation=$3, frequence_cotisation=$4,
-           jour_cotisation=$5, frequence_tirage=$6, nombre_membres=$7,
+           jourFinal=$5, frequence_tirage=$6, nombre_membres=$7,
            description=$8, statut=$9
        WHERE id=$10 AND createur=$11
        RETURNING *`,
@@ -266,7 +269,7 @@ router.put("/:id", requireAuth, async (req, res) => {
         type,
         montant_cotisation,
         frequence_cotisation,
-        jour_cotisation,
+        jourFinal,
         frequence_tirage,
         nombre_membres,
         description || null,
