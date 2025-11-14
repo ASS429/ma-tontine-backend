@@ -158,6 +158,7 @@ router.post("/run/:tontineId", async (req, res) => {
         message: "✅ Tirage possible",
         gagnantPotentiel: gagnant.nom,
         cycle: cycleActif.numero,
+        montant_gagne: tontine.montant_cotisation * tontine.nombre_membres,
       });
     }
 
