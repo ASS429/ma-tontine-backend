@@ -11,14 +11,73 @@ router.get("/", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `
-      SELECT t.*,
-             CASE 
-               WHEN (SELECT COUNT(*) FROM tirages WHERE tontine_id = t.id) >= t.nombre_membres
-               THEN 'terminee'
-               ELSE t.statut
-             END AS statut_calcule
+      SELECT 
+        t.*,
+        -- 🎯 Calcul du statut automatique
+        CASE 
+          WHEN tirage_count >= t.nombre_membres THEN 'terminee'
+          ELSE t.statut
+        END AS statut_calcule,
+
+        -- 👥 Membres
+        COALESCE(membres.membres_json, '[]') AS membres,
+        
+        -- 💰 Cotisations
+        COALESCE(cot.cotisations_json, '[]') AS cotisations,
+        
+        -- 🎲 Tirages
+        COALESCE(tr.tirages_json, '[]') AS tirages
+
       FROM tontines t
-      WHERE t.createur=$1
+
+      -- ➤ Nombre total de tirages (pour statut)
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS tirage_count
+        FROM tirages 
+        WHERE tontine_id = t.id
+      ) tirages_count ON TRUE
+
+      -- ➤ Sous-requête membres
+      LEFT JOIN LATERAL (
+        SELECT json_agg(
+          json_build_object(
+            'id', m.id,
+            'nom', m.nom,
+            'creeLe', m.cree_le
+          )
+        ) AS membres_json
+        FROM membres m
+        WHERE m.tontine_id = t.id
+      ) membres ON TRUE
+
+      -- ➤ Sous-requête cotisations
+      LEFT JOIN LATERAL (
+        SELECT json_agg(
+          json_build_object(
+            'id', c.id,
+            'membre_id', c.membre_id,
+            'montant', c.montant,
+            'date', c.date_cotisation
+          )
+        ) AS cotisations_json
+        FROM cotisations c
+        WHERE c.tontine_id = t.id
+      ) cot ON TRUE
+
+      -- ➤ Sous-requête tirages
+      LEFT JOIN LATERAL (
+        SELECT json_agg(
+          json_build_object(
+            'id', tr.id,
+            'membre_id', tr.membre_id,
+            'date', tr.date_tirage
+          )
+        ) AS tirages_json
+        FROM tirages tr
+        WHERE tr.tontine_id = t.id
+      ) tr ON TRUE
+
+      WHERE t.createur = $1
       ORDER BY t.cree_le DESC
       `,
       [req.user.id]
@@ -34,20 +93,28 @@ router.get("/", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
+
+      // ⭐ Statut fiable
       statut: t.statut_calcule,
+
       creeLe: t.cree_le,
-      membres: [],
-      cotisations: [],
-      tirages: [],
-      gagnants: []
+
+      // ⭐ Les données déjà jointes
+      membres: t.membres,
+      cotisations: t.cotisations,
+      tirages: t.tirages,
+
+      // ⭐ Gagnants = tirages
+      gagnants: t.tirages
     }));
 
     res.json(tontines);
   } catch (err) {
-    console.error("Erreur fetch tontines:", err.message);
+    console.error("Erreur fetch tontines optimisées:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /* -----------------------
    📌 GET une tontine avec détails
