@@ -5,7 +5,7 @@ import pool from "../db.js";
 const router = express.Router();
 
 /* -----------------------
-   📌 GET toutes les tontines de l’utilisateur
+   📌 GET toutes les tontines de l'utilisateur
 ------------------------ */
 router.get("/", requireAuth, async (req, res) => {
   try {
@@ -93,25 +93,18 @@ router.get("/", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-
-      // ⭐ Statut fiable
       statut: t.statut_calcule,
-
       creeLe: t.cree_le,
-
-      // ⭐ Les données déjà jointes
       membres: t.membres,
       cotisations: t.cotisations,
       tirages: t.tirages,
-
-      // ⭐ Gagnants = tirages
       gagnants: t.tirages
     }));
 
     res.json(tontines);
   } catch (err) {
-    console.error("Erreur fetch tontines optimisées:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("Erreur fetch tontines:", err.message);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
@@ -143,7 +136,6 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     const t = tontineRows[0];
 
-    // Membres
     const { rows: membres } = await pool.query(
       `SELECT id, nom, cree_le 
        FROM membres 
@@ -152,7 +144,6 @@ router.get("/:id", requireAuth, async (req, res) => {
       [tontineId]
     );
 
-    // Cotisations
     const { rows: cotisations } = await pool.query(
       `SELECT id, membre_id, montant, date_cotisation 
        FROM cotisations 
@@ -161,7 +152,6 @@ router.get("/:id", requireAuth, async (req, res) => {
       [tontineId]
     );
 
-    // Tirages
     const { rows: tirages } = await pool.query(
       `SELECT id, membre_id, date_tirage
        FROM tirages
@@ -180,7 +170,7 @@ router.get("/:id", requireAuth, async (req, res) => {
       frequenceTirage: t.frequence_tirage,
       nombreMembresMax: t.nombre_membres,
       description: t.description,
-      statut: t.statut_calcule, // ✅ calcul auto
+      statut: t.statut_calcule,
       creeLe: t.cree_le,
       membres,
       cotisations,
@@ -189,7 +179,7 @@ router.get("/:id", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("Erreur fetch tontine complète:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
@@ -213,7 +203,6 @@ router.post("/", requireAuth, async (req, res) => {
   }
 
   try {
-    // 🔎 Vérifier le plan + statut paiement de l’utilisateur
     const { rows: userRows } = await pool.query(
       "SELECT plan, payment_status FROM utilisateurs WHERE id=$1",
       [req.user.id]
@@ -226,7 +215,6 @@ router.post("/", requireAuth, async (req, res) => {
     const plan = userRows[0].plan || "Free";
     const paymentStatus = userRows[0].payment_status || "none";
 
-    // 🚫 Bloquer si Premium mais pas encore validé
     if (plan === "Premium" && paymentStatus === "en_attente") {
       return res.status(403).json({
         error: "⏳ Votre abonnement Premium est en attente de validation par un administrateur."
@@ -239,7 +227,6 @@ router.post("/", requireAuth, async (req, res) => {
       });
     }
 
-    // 🚫 Si Free → limite de 2 tontines
     if (plan === "Free") {
       const { rows: countRows } = await pool.query(
         "SELECT COUNT(*) FROM tontines WHERE createur=$1",
@@ -254,29 +241,28 @@ router.post("/", requireAuth, async (req, res) => {
       }
     }
 
-    const jourFinal =
-  frequence_cotisation === "quotidien" ? null : jour_cotisation;
+    const jourFinal = frequence_cotisation === "quotidien" ? null : jour_cotisation;
 
-const { rows } = await pool.query(
-  `INSERT INTO tontines (
-     nom, type, montant_cotisation, frequence_cotisation,
-     jour_cotisation, frequence_tirage, nombre_membres,
-     description, createur
-   )
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-   RETURNING *`,
-  [
-    nom,
-    type,
-    montant_cotisation,
-    frequence_cotisation,
-    jourFinal,
-    frequence_tirage,
-    nombre_membres,
-    description || null,
-    req.user.id
-  ]
-);
+    const { rows } = await pool.query(
+      `INSERT INTO tontines (
+         nom, type, montant_cotisation, frequence_cotisation,
+         jour_cotisation, frequence_tirage, nombre_membres,
+         description, createur
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING *`,
+      [
+        nom,
+        type,
+        montant_cotisation,
+        frequence_cotisation,
+        jourFinal,
+        frequence_tirage,
+        nombre_membres,
+        description || null,
+        req.user.id
+      ]
+    );
 
     const t = rows[0];
 
@@ -299,12 +285,13 @@ const { rows } = await pool.query(
     });
   } catch (err) {
     console.error("Erreur création tontine:", err.message);
-    res.status(500).json({ error: "Erreur serveur: " + err.message });
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
 /* -----------------------
    📌 PUT modifier une tontine
+   ✅ CORRECTIF : jourFinal=$5 → jour_cotisation=$5
 ------------------------ */
 router.put("/:id", requireAuth, async (req, res) => {
   const tontineId = req.params.id;
@@ -319,15 +306,16 @@ router.put("/:id", requireAuth, async (req, res) => {
     description,
     statut
   } = req.body;
-   
-const jourFinal =
-  frequence_cotisation === "quotidien" ? null : jour_cotisation;
+
+  // Si fréquence quotidienne, le jour n'a pas de sens
+  const jourFinal = frequence_cotisation === "quotidien" ? null : jour_cotisation;
 
   try {
     const { rows } = await pool.query(
+      // ✅ CORRECTIF : était "jourFinal=$5" (colonne inexistante → erreur 500 systématique)
       `UPDATE tontines
        SET nom=$1, type=$2, montant_cotisation=$3, frequence_cotisation=$4,
-           jourFinal=$5, frequence_tirage=$6, nombre_membres=$7,
+           jour_cotisation=$5, frequence_tirage=$6, nombre_membres=$7,
            description=$8, statut=$9
        WHERE id=$10 AND createur=$11
        RETURNING *`,
@@ -336,7 +324,7 @@ const jourFinal =
         type,
         montant_cotisation,
         frequence_cotisation,
-        jourFinal,
+        jourFinal,          // ← colonne réelle en BDD
         frequence_tirage,
         nombre_membres,
         description || null,
@@ -352,7 +340,6 @@ const jourFinal =
 
     const t = rows[0];
 
-    // ✅ recalcul auto
     const { rows: tiragesCount } = await pool.query(
       `SELECT COUNT(*)::int AS nb FROM tirages WHERE tontine_id = $1`,
       [t.id]
@@ -379,7 +366,7 @@ const jourFinal =
     });
   } catch (err) {
     console.error("Erreur modification tontine:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
@@ -402,7 +389,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
     res.json({ success: true, message: "Tontine supprimée avec succès" });
   } catch (err) {
     console.error("Erreur suppression tontine:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
